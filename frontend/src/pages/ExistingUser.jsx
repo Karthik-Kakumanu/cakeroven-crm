@@ -1,119 +1,124 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-
+import { motion } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 export default function ExistingUser() {
   const navigate = useNavigate();
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setError("");
 
-    const cleanedPhone = phone.trim();
-
-    if (cleanedPhone.length !== 10) {
-      alert("Please enter a valid 10-digit phone number.");
-      setLoading(false);
+    if (!/^\d{10}$/.test(phone)) {
+      setError("Please enter the 10-digit phone number you registered with.");
       return;
     }
+
+    setLoading(true);
 
     try {
       const res = await fetch(`${API_BASE}/api/customer/login-by-phone`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanedPhone }),
+        body: JSON.stringify({ phone: phone.trim() }),
       });
 
       const data = await res.json();
 
-      if (res.status === 404) {
-        alert("This phone number is not registered. Please register first.");
-        setLoading(false);
-        return;
-      }
-
       if (!res.ok) {
-        alert(data.message || "Error occurred.");
+        setError(data.message || "This phone number is not registered.");
         setLoading(false);
         return;
       }
 
-      const memberCode = data.card.memberCode || data.card.member_code;
+      localStorage.setItem("cr_memberCode", data.memberCode);
+      localStorage.setItem("cr_phone", data.phone);
 
-      // 🔐 store both values
-      localStorage.setItem("cr_memberCode", memberCode);
-      localStorage.setItem("cr_phone", cleanedPhone);
-
-      navigate("/card");
+      navigate(`/card?member=${data.memberCode}`);
     } catch (err) {
       console.error(err);
-      alert("Server error, please try again.");
+      setError("Server error. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-[#501914] rounded-3xl shadow-[0_0_40px_rgba(0,0,0,0.55)] p-6 sm:p-8 text-[#f5e6c8]">
-        {/* Logo header */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-14 h-14 rounded-full bg-[#f5e6c8] flex items-center justify-center shadow-[0_0_20px_rgba(0,0,0,0.35)]">
-            <div className="w-12 h-12 rounded-full overflow-hidden">
+    <div className="flex min-h-screen items-center justify-center bg-[#f5e6c8] px-4 py-10">
+      <motion.div
+        initial={{ opacity: 0, y: 30, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="w-full max-w-md rounded-[2.25rem] bg-[#501914] px-7 py-8 text-[#f5e6c8] shadow-[0_40px_80px_rgba(0,0,0,0.55)]"
+      >
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f5e6c8] shadow-[0_0_18px_rgba(0,0,0,0.35)]">
+            <div className="h-10 w-10 overflow-hidden rounded-full">
               <img
                 src="/cakeroven-logo.png"
                 alt="CakeRoven"
-                className="w-full h-full object-cover"
+                className="h-full w-full object-cover"
               />
             </div>
           </div>
           <div>
-            <h2 className="text-xl font-semibold leading-tight">
+            <h1 className="text-lg font-bold leading-tight">
               Existing CakeRoven User
-            </h2>
+            </h1>
             <p className="text-[11px] text-[#f5e6c8]/80">
-              Enter your registered phone to see your card.
+              Fetch your digital stamp card with your registered phone number.
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="flex flex-col">
-            <label className="text-sm mb-1">Phone Number</label>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase tracking-wide text-[#f5e6c8]/70">
+              Phone Number
+            </label>
             <input
               type="tel"
-              className="p-3 rounded-2xl border border-[#f5e6c8]/40 outline-none bg-[#f5e6c8] text-[#501914] focus:border-[#f5e6c8] transition text-sm"
+              inputMode="numeric"
+              maxLength={10}
               placeholder="Registered mobile number"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) =>
+                setPhone(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))
+              }
               required
+              className="w-full rounded-2xl border border-[#f5e6c8]/30 bg-[#f5e6c8] px-4 py-3 text-sm text-[#501914] outline-none transition focus:border-[#f5e6c8] focus:ring-2 focus:ring-[#f5e6c8]/60"
             />
           </div>
+
+          {error && (
+            <div className="rounded-2xl bg-red-500/15 px-3 py-2 text-xs text-red-100">
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-3 py-3 rounded-2xl bg-[#f5e6c8] text-[#501914] font-semibold shadow-[0_8px_20px_rgba(0,0,0,0.4)] active:scale-[0.98] transition text-sm"
+            className="mt-2 flex w-full items-center justify-center rounded-2xl bg-[#f5e6c8] px-4 py-3 text-sm font-semibold text-[#501914] shadow-[0_10px_30px_rgba(0,0,0,0.45)] transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-80"
           >
-            {loading ? "Fetching your card..." : "Show My Card"}
+            {loading ? "Fetching your card…" : "Fetch my card"}
           </button>
         </form>
 
-        <div className="mt-5 text-center">
-          <p className="text-xs text-[#f5e6c8]/80">
-            New to CakeRoven?{" "}
-            <Link
-              to="/register"
-              className="font-semibold text-[#f5e6c8] underline underline-offset-4"
-            >
-              Register here
-            </Link>
-          </p>
-        </div>
-      </div>
+        <p className="mt-4 text-center text-xs text-[#f5e6c8]/80">
+          New to CakeRoven?{" "}
+          <Link
+            to="/register"
+            className="font-semibold underline decoration-[#f5e6c8]/60 underline-offset-2"
+          >
+            Register here
+          </Link>
+        </p>
+      </motion.div>
     </div>
   );
 }

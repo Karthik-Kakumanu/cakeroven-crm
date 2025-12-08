@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Legend,
-} from "recharts";
-
+import { motion } from "framer-motion";
 import { API_BASE } from "../apiConfig";
-
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -20,13 +17,11 @@ export default function AdminDashboard() {
   const [filtered, setFiltered] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [busyKey, setBusyKey] = useState(null); // "CR0001-add" / "CR0001-remove"
-  const [rewardSplash, setRewardSplash] = useState(null); // {memberCode, name}
+  const [busyMember, setBusyMember] = useState(null);
 
   const token = localStorage.getItem("cr_adminToken");
   const adminName = localStorage.getItem("cr_adminUsername") || "Owner";
 
-  // ===== LOAD CUSTOMERS =====
   useEffect(() => {
     if (!token) {
       navigate("/admin-login");
@@ -34,9 +29,12 @@ export default function AdminDashboard() {
     }
 
     const fetchCustomers = async () => {
+      setLoading(true);
       try {
         const res = await fetch(`${API_BASE}/api/admin/customers`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
         const data = await res.json();
@@ -46,6 +44,7 @@ export default function AdminDashboard() {
             alert("Session expired. Please login again.");
             localStorage.removeItem("cr_adminToken");
             localStorage.removeItem("cr_adminUsername");
+            localStorage.removeItem("cr_adminRole");
             navigate("/admin-login");
             return;
           }
@@ -54,16 +53,12 @@ export default function AdminDashboard() {
           return;
         }
 
-        const list = (data.customers || []).slice().sort((a, b) =>
-          (a.member_code || "").localeCompare(b.member_code || "")
-        );
-
-        setCustomers(list);
-        setFiltered(list);
-        setLoading(false);
+        setCustomers(data.customers || []);
+        setFiltered(data.customers || []);
       } catch (err) {
         console.error(err);
         alert("Server error");
+      } finally {
         setLoading(false);
       }
     };
@@ -71,7 +66,7 @@ export default function AdminDashboard() {
     fetchCustomers();
   }, [navigate, token]);
 
-  // ===== SEARCH FILTER =====
+  // search filter
   useEffect(() => {
     const q = search.trim().toLowerCase();
     if (!q) {
@@ -92,482 +87,348 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem("cr_adminToken");
     localStorage.removeItem("cr_adminUsername");
+    localStorage.removeItem("cr_adminRole");
     navigate("/admin-login");
   };
 
-  // ===== ANALYTICS + CHART DATA + BIRTHDAYS =====
-  const {
-    totalCustomers,
-    totalStamps,
-    totalRewards,
-    todayBirthdays,
-    chartData,
-  } = useMemo(() => {
+  const handleStampChange = async (memberCode, type) => {
+    if (!token) return;
+
+    setBusyMember(memberCode);
+
+    try {
+      const endpoint =
+        type === "add"
+          ? `${API_BASE}/api/admin/add-stamp`
+          : `${API_BASE}/api/admin/remove-stamp`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ memberCode }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Could not update stamp");
+        setBusyMember(null);
+        return;
+      }
+
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.member_code === memberCode
+            ? {
+                ...c,
+                current_stamps: data.card.currentStamps,
+                total_rewards: data.card.totalRewards,
+              }
+            : c
+        )
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Server error");
+    } finally {
+      setBusyMember(null);
+    }
+  };
+
+  // analytics
+  const stats = useMemo(() => {
     const totalCustomers = customers.length;
-    let totalStamps = 0;
-    let totalRewards = 0;
-    const todayBirthdays = [];
-
-    const today = new Date();
-    const tMonth = today.getMonth() + 1;
-    const tDay = today.getDate();
-
-    const byDate = new Map();
-
-    customers.forEach((c) => {
-      const stampsForPerson =
-        (c.current_stamps || 0) + (c.total_rewards || 0) * 12;
-      totalStamps += c.current_stamps || 0;
-      totalRewards += c.total_rewards || 0;
-
-      if (c.dob) {
-        const d = new Date(c.dob);
-        if (d.getMonth() + 1 === tMonth && d.getDate() === tDay) {
-          todayBirthdays.push(c);
-        }
-      }
-
-      const created = c.created_at ? new Date(c.created_at) : null;
-      const key = created
-        ? created.toISOString().slice(0, 10)
-        : "Unknown";
-
-      if (!byDate.has(key)) {
-        byDate.set(key, { date: key, members: 0, stamps: 0 });
-      }
-      const entry = byDate.get(key);
-      entry.members += 1;
-      entry.stamps += stampsForPerson;
-    });
-
-    const chartData = Array.from(byDate.values()).sort((a, b) =>
-      a.date.localeCompare(b.date)
+    const totalRewards = customers.reduce(
+      (sum, c) => sum + (c.total_rewards || 0),
+      0
+    );
+    const totalStamps = customers.reduce(
+      (sum, c) => sum + (c.current_stamps || 0),
+      0
     );
 
-    return {
-      totalCustomers,
-      totalStamps,
-      totalRewards,
-      todayBirthdays,
-      chartData,
-    };
+    const today = new Date();
+    const todayBirthdays = customers.filter((c) => {
+      if (!c.dob) return false;
+      const d = new Date(c.dob);
+      return d.getDate() === today.getDate() && d.getMonth() === today.getMonth();
+    });
+
+    return { totalCustomers, totalRewards, totalStamps, todayBirthdays };
   }, [customers]);
 
-  // auto hide reward splash
-  useEffect(() => {
-    if (!rewardSplash) return;
-    const t = setTimeout(() => setRewardSplash(null), 4000);
-    return () => clearTimeout(t);
-  }, [rewardSplash]);
-
-  // ===== STAMP ACTIONS =====
-  const handleGiveStamp = async (row) => {
-    if (!token) return;
-
-    const key = `${row.member_code}-add`;
-    setBusyKey(key);
-
-    const prevStamps = row.current_stamps || 0;
-    const prevRewards = row.total_rewards || 0;
-
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/add-stamp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ memberCode: row.member_code }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.message || "Could not update stamps");
-        setBusyKey(null);
-        return;
-      }
-
-      const newStamps = data.card.currentStamps;
-      const newRewards = data.card.totalRewards;
-
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.member_code === row.member_code
-            ? {
-                ...c,
-                current_stamps: newStamps,
-                total_rewards: newRewards,
-              }
-            : c
-        )
-      );
-
-      if (
-        newRewards > prevRewards &&
-        prevStamps === 11 &&
-        newStamps === 0
-      ) {
-        setRewardSplash({
-          memberCode: row.member_code,
-          name: row.name,
-        });
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Server error");
-    }
-
-    setBusyKey(null);
-  };
-
-  const handleUndoStamp = async (row) => {
-    if (!token) return;
-
-    const key = `${row.member_code}-remove`;
-    setBusyKey(key);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/remove-stamp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ memberCode: row.member_code }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.message || "Could not undo stamp");
-        setBusyKey(null);
-        return;
-      }
-
-      const newStamps = data.card.currentStamps;
-      const newRewards = data.card.totalRewards;
-
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.member_code === row.member_code
-            ? {
-                ...c,
-                current_stamps: newStamps,
-                total_rewards: newRewards,
-              }
-            : c
-        )
-      );
-    } catch (err) {
-      console.error(err);
-      alert("Server error");
-    }
-
-    setBusyKey(null);
-  };
+  const chartData = useMemo(() => {
+    if (!customers.length) return [];
+    const buckets = {
+      "0–3": 0,
+      "4–7": 0,
+      "8–11": 0,
+      "12": 0,
+    };
+    customers.forEach((c) => {
+      const s = c.current_stamps || 0;
+      if (s === 12) buckets["12"] += 1;
+      else if (s <= 3) buckets["0–3"] += 1;
+      else if (s <= 7) buckets["4–7"] += 1;
+      else buckets["8–11"] += 1;
+    });
+    return Object.entries(buckets).map(([range, count]) => ({
+      range,
+      count,
+    }));
+  }, [customers]);
 
   if (!token) return null;
 
   return (
-    <div className="min-h-screen bg-[#f5e6c8] flex flex-col items-center py-6 px-8">
-      <div className="w-full max-w-6xl">
-        {/* Top bar */}
-        <div className="flex items-center justify-between mb-4">
+    <div className="flex min-h-screen items-start justify-center bg-[#f5e6c8] px-4 py-8">
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="flex w-full max-w-6xl flex-col gap-6"
+      >
+        {/* top bar */}
+        <div className="flex flex-col gap-4 rounded-3xl bg-[#501914] px-6 py-5 text-[#f5e6c8] shadow-[0_30px_60px_rgba(0,0,0,0.55)] md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-[#501914] flex items-center justify-center">
-              <div className="w-10 h-10 rounded-full overflow-hidden bg-[#f5e6c8]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f5e6c8]">
+              <div className="h-9 w-9 overflow-hidden rounded-full">
                 <img
                   src="/cakeroven-logo.png"
                   alt="CakeRoven"
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                 />
               </div>
             </div>
             <div>
-              <p className="text-xs text-[#501914]/70">CakeRoven Admin</p>
-              <p className="text-base font-semibold text-[#501914]">
-                Welcome, {adminName}
+              <p className="text-xs text-[#f5e6c8]/70">CakeRoven Admin</p>
+              <p className="text-sm font-semibold">
+                Welcome, {adminName || "Owner"}
               </p>
             </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 rounded-2xl bg-[#501914] text-[#f5e6c8] text-xs font-semibold shadow-[0_4px_10px_rgba(0,0,0,0.4)]"
-          >
-            Logout
-          </button>
-        </div>
-
-        {/* Reward splash – NOW BELOW WELCOME */}
-        {rewardSplash && (
-          <div className="mb-5 bg-white border border-[#501914]/30 rounded-2xl px-4 py-3 shadow-[0_10px_25px_rgba(0,0,0,0.35)] text-sm text-[#501914] flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#501914] flex items-center justify-center text-[#f5e6c8] text-lg">
-              🎁
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold">
-                Gift unlocked for {rewardSplash.name}
-              </p>
-              <p className="text-xs text-[#501914]/75">
-                Member ID{" "}
-                <span className="font-mono">{rewardSplash.memberCode}</span>{" "}
-                completed 12 stamps. Please offer the reward and continue a new
-                cycle.
-              </p>
-            </div>
+          <div className="flex flex-1 flex-col gap-3 md:flex-row md:items-center md:justify-end">
+            <input
+              type="text"
+              placeholder="Search: name / phone / CR ID"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full max-w-xs rounded-2xl border border-[#f5e6c8]/35 bg-[#f5e6c8] px-4 py-2.5 text-xs text-[#501914] outline-none focus:border-[#f5e6c8] focus:ring-2 focus:ring-[#f5e6c8]/70"
+            />
             <button
-              className="text-xs text-[#501914]/60 ml-2"
-              onClick={() => setRewardSplash(null)}
+              onClick={handleLogout}
+              className="rounded-2xl bg-[#f5e6c8] px-4 py-2 text-xs font-semibold text-[#501914] shadow-[0_8px_20px_rgba(0,0,0,0.5)]"
             >
-              close
+              Logout
             </button>
           </div>
-        )}
+        </div>
 
-        {/* Layout: left = table, right = analytics + chart */}
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
-          {/* LEFT: search + table */}
-          <div className="flex-1 w-full">
-            <div className="mb-4">
-              <input
-                type="text"
-                placeholder="Search by name / phone / Member ID"
-                className="w-full h-11 rounded-2xl px-4 border border-[#501914]/30 bg-white text-sm text-[#501914] outline-none shadow-sm"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <p className="text-[11px] text-[#501914]/60 mt-1">
-                Use this table like Excel – each row is a member. Click{" "}
-                <b>Stamp visit</b> when bill ≥ ₹500. Click on last filled circle
-                to undo a stamp.
+        {/* analytics + birthdays */}
+        <div className="grid gap-4 md:grid-cols-[2fr,1.2fr]">
+          {/* chart & stats */}
+          <div className="rounded-3xl bg-white px-5 py-4 shadow-[0_20px_40px_rgba(0,0,0,0.15)]">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[#501914]">
+                Loyalty overview
+              </h3>
+              <p className="text-[11px] text-[#501914]/70">
+                Total customers:{" "}
+                <span className="font-semibold">{stats.totalCustomers}</span>
               </p>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-[0_0_25px_rgba(0,0,0,0.25)] overflow-auto">
-              {loading ? (
-                <div className="p-6 text-center text-[#501914]">
-                  Loading customers…
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="p-6 text-center text-[#501914]/70 text-sm">
-                  No customers found.
-                </div>
-              ) : (
-                <table className="min-w-full text-sm">
-                  <thead className="bg-[#501914] text-[#f5e6c8]">
-                    <tr>
-                      <th className="px-3 py-2 text-left">S.No</th>
-                      <th className="px-3 py-2 text-left">Member ID</th>
-                      <th className="px-3 py-2 text-left">Name</th>
-                      <th className="px-3 py-2 text-left">Phone</th>
-                      <th className="px-3 py-2 text-left">Date of Birth</th>
-                      <th className="px-3 py-2 text-center">
-                        Stamps &amp; actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((c, idx) => {
-                      const current = c.current_stamps || 0;
-                      const dobText = c.dob
-                        ? new Date(c.dob).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })
-                        : "-";
+            <div className="mb-4 grid grid-cols-3 gap-3 text-center text-[11px] text-[#501914]">
+              <div className="rounded-2xl bg-[#f5e6c8] px-3 py-2">
+                <p className="text-[10px] text-[#501914]/70">Active stamps</p>
+                <p className="mt-1 text-base font-semibold">
+                  {stats.totalStamps}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-[#f5e6c8] px-3 py-2">
+                <p className="text-[10px] text-[#501914]/70">Rewards given</p>
+                <p className="mt-1 text-base font-semibold">
+                  {stats.totalRewards}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-[#f5e6c8] px-3 py-2">
+                <p className="text-[10px] text-[#501914]/70">
+                  Avg stamps / user
+                </p>
+                <p className="mt-1 text-base font-semibold">
+                  {stats.totalCustomers
+                    ? (stats.totalStamps / stats.totalCustomers).toFixed(1)
+                    : "0.0"}
+                </p>
+              </div>
+            </div>
 
-                      const addKey = `${c.member_code}-add`;
-
-                      return (
-                        <tr
-                          key={c.member_code}
-                          className="border-b border-[#501914]/10 hover:bg-[#f5e6c8]/40"
-                        >
-                          <td className="px-3 py-2 text-xs text-[#501914]/80">
-                            {idx + 1}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs text-[#501914]">
-                            {c.member_code}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-[#501914]">
-                            {c.name}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-[#501914]">
-                            {c.phone}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-[#501914]/80">
-                            {dobText}
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-center gap-4">
-                              {/* 12 circles – last filled circle clickable for undo */}
-                              <div className="flex gap-1">
-                                {Array.from({ length: 12 }).map((_, i) => {
-                                  const filled = i < current;
-                                  const isLastFilled =
-                                    filled && i === current - 1;
-                                  const canUndo = current > 0 && isLastFilled;
-
-                                  return (
-                                    <button
-                                      key={i}
-                                      type="button"
-                                      onClick={() =>
-                                        canUndo ? handleUndoStamp(c) : null
-                                      }
-                                      className={`w-6 h-6 rounded-full border text-[10px] flex items-center justify-center
-                                        ${
-                                          filled
-                                            ? "bg-[#501914] border-[#501914] text-[#f5e6c8]"
-                                            : "border-[#501914]/30 text-[#501914]/30 bg-transparent"
-                                        }
-                                        ${
-                                          canUndo
-                                            ? "cursor-pointer hover:scale-110 transition"
-                                            : "cursor-default"
-                                        }`}
-                                      title={
-                                        canUndo ? "Click to undo last stamp" : ""
-                                      }
-                                    >
-                                      {filled ? "✓" : ""}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Stamp visit button */}
-                              <button
-                                type="button"
-                                onClick={() => handleGiveStamp(c)}
-                                disabled={busyKey === addKey}
-                                className="px-4 py-1.5 rounded-full bg-[#501914] text-[#f5e6c8] text-[11px] font-semibold shadow active:scale-95"
-                              >
-                                {busyKey === addKey
-                                  ? "Stamping..."
-                                  : "Stamp visit 🎟️"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+            <div className="h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#f3d9b5"
+                  />
+                  <XAxis
+                    dataKey="range"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 10, fill: "#501914" }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(80,25,20,0.05)" }}
+                    contentStyle={{
+                      borderRadius: "12px",
+                      border: "none",
+                      boxShadow:
+                        "0 12px 25px rgba(0,0,0,0.18)",
+                      fontSize: 11,
+                    }}
+                  />
+                  <Bar dataKey="count" radius={[10, 10, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
-          {/* RIGHT: metrics + chart + birthdays */}
-          <div className="w-full lg:w-80 flex flex-col gap-4">
-            {/* Numbers + chart */}
-            <div className="bg-white rounded-2xl shadow-[0_0_25px_rgba(0,0,0,0.25)] p-4">
-              <h3 className="text-sm font-semibold text-[#501914] mb-3">
-                Loyalty overview
-              </h3>
-
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div>
-                  <p className="text-[11px] text-[#501914]/70">Members</p>
-                  <p className="text-lg font-bold text-[#501914]">
-                    {totalCustomers}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-[#501914]/70">
-                    Active stamps
-                  </p>
-                  <p className="text-lg font-bold text-[#501914]">
-                    {totalStamps}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-[#501914]/70">Rewards</p>
-                  <p className="text-lg font-bold text-[#501914]">
-                    {totalRewards}
-                  </p>
-                </div>
-              </div>
-
-              {chartData.length > 0 ? (
-                <div className="h-44">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 10 }}
-                        tickMargin={6}
-                      />
-                      <YAxis
-                        yAxisId="left"
-                        tick={{ fontSize: 10 }}
-                        tickMargin={4}
-                      />
-                      <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fontSize: 10 }}
-                        tickMargin={2}
-                      />
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="members"
-                        name="Members joined"
-                        stroke="#ff4d4f"
-                        dot={{ r: 3 }}
-                      />
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="stamps"
-                        name="Total stamps"
-                        stroke="#1890ff"
-                        dot={{ r: 3 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#501914]/60">
-                  Not enough data for chart yet.
-                </p>
-              )}
-            </div>
-
-            {/* Birthdays card */}
-            <div className="rounded-2xl bg-white border border-[#501914]/15 px-4 py-3 shadow text-sm text-[#501914]">
-              {todayBirthdays.length > 0 ? (
-                <>
-                  <p className="font-semibold mb-1">
-                    🎂 Today&apos;s CakeRoven birthdays
-                  </p>
-                  <ul className="space-y-1 text-[13px]">
-                    {todayBirthdays.map((b) => (
-                      <li key={b.member_code}>
-                        <span className="font-mono text-xs">
-                          {b.member_code}
-                        </span>{" "}
-                        – {b.name} ({b.phone})
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <p className="text-[13px] text-[#501914]/80">
-                  🎂 No member birthdays today.
-                </p>
-              )}
-            </div>
+          {/* birthdays */}
+          <div className="rounded-3xl bg-white px-5 py-4 text-sm text-[#501914] shadow-[0_20px_40px_rgba(0,0,0,0.15)]">
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              <span role="img" aria-label="birthday">
+                🎂
+              </span>
+              Today&apos;s CakeRoven birthdays
+            </h3>
+            {stats.todayBirthdays.length === 0 ? (
+              <p className="text-[12px] text-[#501914]/70">
+                No member birthdays today.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-[12px]">
+                {stats.todayBirthdays.map((b) => (
+                  <li key={b.member_code}>
+                    <span className="font-mono text-xs">
+                      {b.member_code}
+                    </span>{" "}
+                    – <span className="font-medium">{b.name}</span>{" "}
+                    <span className="text-[#501914]/70">({b.phone})</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
-      </div>
+
+        {/* table */}
+        <div className="rounded-3xl bg-white px-5 py-4 shadow-[0_20px_40px_rgba(0,0,0,0.15)]">
+          <div className="mb-3 flex items-center justify-between text-sm text-[#501914]">
+            <h3 className="font-semibold">Customers & stamps</h3>
+            <p className="text-[11px] text-[#501914]/70">
+              Click <span className="font-semibold">+1</span> after each eligible bill,
+              <span className="font-semibold"> Undo</span> to correct mistakes.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="py-8 text-center text-sm text-[#501914]/70">
+              Loading customers…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-8 text-center text-sm text-[#501914]/70">
+              No customers found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-[12px] text-[#501914]">
+                <thead>
+                  <tr className="bg-[#501914] text-[11px] uppercase tracking-wide text-[#f5e6c8]">
+                    <th className="px-3 py-2">S.No</th>
+                    <th className="px-3 py-2">Member ID</th>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Phone</th>
+                    <th className="px-3 py-2">Date of Birth</th>
+                    <th className="px-3 py-2">Stamps (0–12)</th>
+                    <th className="px-3 py-2 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((c, idx) => (
+                    <tr
+                      key={c.member_code}
+                      className={
+                        idx % 2 === 0
+                          ? "bg-[#fdf6e8]"
+                          : "bg-[#faedd5]"
+                      }
+                    >
+                      <td className="px-3 py-2 align-middle">{idx + 1}</td>
+                      <td className="px-3 py-2 align-middle font-mono text-xs">
+                        {c.member_code}
+                      </td>
+                      <td className="px-3 py-2 align-middle text-xs">
+                        {c.name}
+                      </td>
+                      <td className="px-3 py-2 align-middle text-xs">
+                        {c.phone}
+                      </td>
+                      <td className="px-3 py-2 align-middle text-xs">
+                        {c.dob
+                          ? new Date(c.dob).toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : "-"}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-7 min-w-[40px] items-center justify-center rounded-full bg-white px-2 text-xs font-mono shadow-sm">
+                            {c.current_stamps}/12
+                          </span>
+                          <span className="text-[11px] text-[#501914]/70">
+                            Rewards:{" "}
+                            <span className="font-semibold">
+                              {c.total_rewards}
+                            </span>
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() =>
+                              handleStampChange(c.member_code, "remove")
+                            }
+                            disabled={busyMember === c.member_code}
+                            className="rounded-full border border-[#501914]/40 px-3 py-1 text-[11px] font-semibold text-[#501914] hover:bg-[#501914]/5 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Undo
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleStampChange(c.member_code, "add")
+                            }
+                            disabled={busyMember === c.member_code}
+                            className="rounded-full bg-[#501914] px-3 py-1 text-[11px] font-semibold text-[#f5e6c8] shadow-sm hover:bg-[#3d100e] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {busyMember === c.member_code ? "…" : "+1"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </motion.div>
     </div>
   );
 }
