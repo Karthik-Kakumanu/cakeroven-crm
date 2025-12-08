@@ -11,7 +11,7 @@ const app = express();
 // ====== GLOBAL MIDDLEWARE (must come before routes) ======
 app.use(
   cors({
-    origin: "http://localhost:5173", // frontend dev URL
+    origin: ["http://localhost:5173", "https://cakeroven-crm.onrender.com"],
   })
 );
 
