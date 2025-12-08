@@ -3,8 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 
 import { API_BASE } from "../apiConfig";
 
-
-
 export default function Register() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -60,8 +58,12 @@ export default function Register() {
       }
 
       const memberCode = data.card.memberCode;
+
+      // 🔐 store both values for secure card fetch
       localStorage.setItem("cr_memberCode", memberCode);
-      navigate(`/card?member=${memberCode}`);
+      localStorage.setItem("cr_phone", cleanedPhone);
+
+      navigate("/card");
     } catch (err) {
       console.error(err);
       alert("Server error, please try again.");

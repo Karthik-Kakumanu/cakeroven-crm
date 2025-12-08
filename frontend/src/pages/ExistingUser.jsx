@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 
 import { API_BASE } from "../apiConfig";
 
-
 export default function ExistingUser() {
   const navigate = useNavigate();
   const [phone, setPhone] = useState("");
@@ -42,9 +41,13 @@ export default function ExistingUser() {
         return;
       }
 
-      const memberCode = data.card.member_code || data.card.memberCode;
+      const memberCode = data.card.memberCode || data.card.member_code;
+
+      // 🔐 store both values
       localStorage.setItem("cr_memberCode", memberCode);
-      navigate(`/card?member=${memberCode}`);
+      localStorage.setItem("cr_phone", cleanedPhone);
+
+      navigate("/card");
     } catch (err) {
       console.error(err);
       alert("Server error, please try again.");

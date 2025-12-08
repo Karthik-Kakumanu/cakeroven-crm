@@ -6,10 +6,11 @@ export default function Start() {
 
   useEffect(() => {
     const storedMember = localStorage.getItem("cr_memberCode");
+    const storedPhone = localStorage.getItem("cr_phone");
 
-    if (storedMember) {
-      // Existing user – go straight to card
-      navigate(`/card?member=${storedMember}`, { replace: true });
+    // ✅ Existing user – only if we have BOTH memberCode & phone
+    if (storedMember && storedPhone) {
+      navigate("/card", { replace: true });
       return;
     }
 
@@ -52,7 +53,7 @@ export default function Start() {
       {/* Center content */}
       <div className="relative z-10 flex flex-col items-center gap-5 px-6">
         {/* Glowing logo badge with pop-in animation */}
-        <div className="w-40 h-40 rounded-full bg-[#501914] shadow-[0_0_45px_rgba(0,0,0,0.5)] flex items-center justify-center animate-[popIn_0.7s_ease-out]">
+        <div className="relative w-40 h-40 rounded-full bg-[#501914] shadow-[0_0_45px_rgba(0,0,0,0.5)] flex items-center justify-center animate-[popIn_0.7s_ease-out]">
           {/* decorative inner ring */}
           <div className="absolute w-44 h-44 rounded-full border border-[#501914]/20" />
           <div className="w-32 h-32 rounded-full overflow-hidden shadow-[0_0_25px_rgba(0,0,0,0.35)]">
