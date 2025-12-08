@@ -1,6 +1,6 @@
+// frontend/src/pages/Register.jsx
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { Link, useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
 
 export default function Register() {
@@ -10,21 +10,11 @@ export default function Register() {
   const [dob, setDob] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
 
-    if (!/^\d{10}$/.test(phone)) {
-      setError("Please enter a valid 10-digit mobile number.");
-      return;
-    }
-
-    if (!dob) {
-      setError("Please select your date of birth.");
+    if (!/^\d{10}$/.test(phone.trim())) {
+      alert("Please enter a valid 10-digit mobile number.");
       return;
     }
 
@@ -37,50 +27,46 @@ export default function Register() {
         body: JSON.stringify({
           name: fullName.trim(),
           phone: phone.trim(),
-          dob,
+          dob: dob || null,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message || "Registration failed. Please try again.");
+        alert(data.message || "Registration failed");
         setLoading(false);
         return;
       }
 
-      // store member code + phone for secure card access
-      localStorage.setItem("cr_memberCode", data.memberCode);
-      localStorage.setItem("cr_phone", data.phone);
+      const card = data.card || {};
+      // Save secure session (no member in URL)
+      localStorage.setItem("cr_memberCode", card.memberCode);
+      localStorage.setItem("cr_phone", card.phone);
 
-      setSuccess("Your CakeRoven card is ready!");
-      setTimeout(() => {
-        navigate(`/card?member=${data.memberCode}`);
-      }, 500);
+      navigate("/card");
     } catch (err) {
       console.error(err);
-      setError("Server error. Please try again.");
-    } finally {
+      alert("Server error. Please try again.");
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f5e6c8] px-4 py-10">
-      <motion.div
-        initial={{ opacity: 0, y: 30, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className="w-full max-w-md rounded-[2.25rem] bg-[#501914] px-7 py-8 text-[#f5e6c8] shadow-[0_40px_80px_rgba(0,0,0,0.55)]"
-      >
+    <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-[#501914] text-[#f5e6c8] rounded-[32px] shadow-[0_24px_60px_rgba(0,0,0,0.6)] p-6 sm:p-8 relative overflow-hidden">
+        {/* soft glow */}
+        <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
+
         {/* header */}
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f5e6c8] shadow-[0_0_18px_rgba(0,0,0,0.35)]">
-            <div className="h-10 w-10 overflow-hidden rounded-full">
+        <div className="relative z-10 flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-full bg-[#f5e6c8] flex items-center justify-center shadow-[0_0_25px_rgba(0,0,0,0.4)]">
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-white">
               <img
                 src="/cakeroven-logo.png"
                 alt="CakeRoven"
-                className="h-full w-full object-cover"
+                className="w-full h-full object-cover"
               />
             </div>
           </div>
@@ -94,93 +80,73 @@ export default function Register() {
           </div>
         </div>
 
-        <h2 className="mb-1 text-xl font-semibold">New User Registration</h2>
-        <p className="mb-4 text-sm text-[#f5e6c8]/80">
-          All fields are <span className="font-semibold">mandatory</span> to
-          generate your digital stamp card.
+        <h2 className="relative z-10 text-xl font-semibold mb-1">
+          New User Registration
+        </h2>
+        <p className="relative z-10 text-xs text-[#f5e6c8]/80 mb-5">
+          All fields are mandatory to generate your digital stamp card.
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* name */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium uppercase tracking-wide text-[#f5e6c8]/70">
-              Full Name
-            </label>
+        {/* form */}
+        <form
+          onSubmit={handleSubmit}
+          className="relative z-10 space-y-4 text-sm"
+        >
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold">Full Name</label>
             <input
               type="text"
-              placeholder="Eg: Ananya Sharma"
+              required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              required
-              className="w-full rounded-2xl border border-[#f5e6c8]/30 bg-[#f5e6c8] px-4 py-3 text-sm text-[#501914] outline-none transition focus:border-[#f5e6c8] focus:ring-2 focus:ring-[#f5e6c8]/60"
+              placeholder="Eg: Ananya Sharma"
+              className="h-11 rounded-2xl px-3 outline-none bg-[#f5e6c8] text-[#501914] border border-transparent focus:border-[#f5e6c8] text-sm"
             />
           </div>
 
-          {/* phone */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium uppercase tracking-wide text-[#f5e6c8]/70">
-              Phone Number
-            </label>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold">Phone Number</label>
             <input
               type="tel"
-              inputMode="numeric"
-              maxLength={10}
-              placeholder="10-digit mobile number"
-              value={phone}
-              onChange={(e) =>
-                setPhone(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))
-              }
               required
-              className="w-full rounded-2xl border border-[#f5e6c8]/30 bg-[#f5e6c8] px-4 py-3 text-sm text-[#501914] outline-none transition focus:border-[#f5e6c8] focus:ring-2 focus:ring-[#f5e6c8]/60"
+              maxLength={10}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+              placeholder="10-digit mobile number"
+              className="h-11 rounded-2xl px-3 outline-none bg-[#f5e6c8] text-[#501914] border border-transparent focus:border-[#f5e6c8] text-sm"
             />
           </div>
 
-          {/* dob */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium uppercase tracking-wide text-[#f5e6c8]/70">
-              Date of Birth
-            </label>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold">Date of Birth</label>
             <input
               type="date"
+              required
               value={dob}
               onChange={(e) => setDob(e.target.value)}
-              required
-              className="w-full rounded-2xl border border-[#f5e6c8]/30 bg-[#f5e6c8] px-4 py-3 text-sm text-[#501914] outline-none transition focus:border-[#f5e6c8] focus:ring-2 focus:ring-[#f5e6c8]/60"
+              className="h-11 rounded-2xl px-3 outline-none bg-[#f5e6c8] text-[#501914] border border-transparent focus:border-[#f5e6c8] text-sm"
             />
           </div>
 
-          {/* feedback messages */}
-          {error && (
-            <div className="rounded-2xl bg-red-500/15 px-3 py-2 text-xs text-red-100">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="rounded-2xl bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100">
-              {success}
-            </div>
-          )}
-
-          {/* submit */}
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 flex w-full items-center justify-center rounded-2xl bg-[#f5e6c8] px-4 py-3 text-sm font-semibold text-[#501914] shadow-[0_10px_30px_rgba(0,0,0,0.45)] transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-80"
+            className="mt-2 w-full h-11 rounded-2xl bg-[#f5e6c8] text-[#501914] font-semibold text-sm shadow-[0_10px_25px_rgba(0,0,0,0.6)] active:scale-[0.98] transition-transform disabled:opacity-70"
           >
-            {loading ? "Creating your card…" : "Create My CakeRoven Card"}
+            {loading ? "Creating your card..." : "Create My CakeRoven Card"}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-[#f5e6c8]/80">
+        <p className="relative z-10 mt-4 text-[11px] text-center text-[#f5e6c8]/85">
           Already a CakeRoven member?{" "}
           <Link
-            to="/existing"
-            className="font-semibold underline decoration-[#f5e6c8]/60 underline-offset-2"
+            to="/existing-user"
+            className="underline font-semibold hover:text-[#ffd8b5]"
           >
             Existing user?
           </Link>
         </p>
-      </motion.div>
+      </div>
     </div>
   );
 }
