@@ -1,186 +1,155 @@
+// frontend/src/pages/Card.jsx
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
-
-function useQuery() {
-  return new URLSearchParams(useLocation().search);
-}
 
 export default function Card() {
   const navigate = useNavigate();
-  const query = useQuery();
 
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPhone, setShowPhone] = useState(false);
-  const [error, setError] = useState("");
-  const [highlightReward, setHighlightReward] = useState(false);
 
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
 
+    // If nothing stored → user shouldn’t be here
     if (!memberCode || !phone) {
       navigate("/start", { replace: true });
       return;
     }
 
-    // keep URL member in sync (for QR scans etc.)
-    const linkMember = query.get("member");
-    if (!linkMember || linkMember !== memberCode) {
-      navigate(`/card?member=${memberCode}`, { replace: true });
-      return;
-    }
-
     const fetchCard = async () => {
-      setLoading(true);
-      setError("");
-
       try {
-        const res = await fetch(`${API_BASE}/api/customer/card`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ memberCode, phone }),
-        });
+        // memberCode comes ONLY from localStorage, not from URL
+        const res = await fetch(
+          `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(
+            phone
+          )}`
+        );
 
         const data = await res.json();
 
         if (!res.ok) {
-          setError(data.message || "Unable to load your card.");
-          setLoading(false);
+          alert(data.message || "Could not load card");
+          navigate("/start", { replace: true });
           return;
         }
 
-        setCard(data.card);
+        setCard(data.card || data);
+        setLoading(false);
       } catch (err) {
         console.error(err);
-        setError("Server error. Please try again.");
-      } finally {
-        setLoading(false);
+        alert("Server error");
+        navigate("/start", { replace: true });
       }
     };
 
     fetchCard();
-  }, [navigate, query]);
-
-  useEffect(() => {
-    if (!card) return;
-    if (card.lastAction === "reward-earned") {
-      setHighlightReward(true);
-      const t = setTimeout(() => setHighlightReward(false), 1600);
-      return () => clearTimeout(t);
-    }
-  }, [card]);
+  }, [navigate]);
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f5e6c8]">
-        <div className="rounded-full border-4 border-[#501914]/20 border-t-[#501914] p-4 animate-spin" />
+      <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center">
+        <p className="text-[#501914]">Loading your card…</p>
       </div>
     );
   }
 
-  if (!card) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#f5e6c8] px-4">
-        <p className="mb-4 text-sm text-[#501914]">
-          We couldn&apos;t find your CakeRoven card.
-        </p>
-        <button
-          onClick={() => navigate("/register")}
-          className="rounded-2xl bg-[#501914] px-5 py-2 text-sm font-semibold text-[#f5e6c8] shadow-md"
-        >
-          Register now
-        </button>
-      </div>
-    );
-  }
+  if (!card) return null;
 
-  const maskedPhone = `••••••${card.phone.slice(-4)}`;
-  const stamps = Array.from({ length: 12 }, (_, i) => i + 1);
+  const maskedPhone =
+    card.phone && card.phone.length >= 3
+      ? "••••••" + card.phone.slice(-3)
+      : "••••••••••";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f5e6c8] px-4 py-10">
-      <motion.div
-        initial={{ opacity: 0, y: 30, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className="w-full max-w-md rounded-[2.5rem] bg-[#501914] px-7 py-8 text-[#f5e6c8] shadow-[0_45px_90px_rgba(0,0,0,0.65)]"
-      >
-        <div className="mb-5 flex items-center justify-between text-[11px] tracking-[0.15em] text-[#f5e6c8]/80">
-          <span>CAKEROVEN LOYALTY</span>
-          <span>
-            MEMBER ID{" "}
-            <span className="font-semibold tracking-[0.2em]">
-              {card.memberCode}
-            </span>
-          </span>
+    <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-[32px] shadow-[0_25px_60px_rgba(0,0,0,0.55)] text-[#f5e6c8] p-6 relative overflow-hidden">
+        {/* Glow */}
+        <div className="absolute -top-16 right-[-40px] w-40 h-40 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-30px] left-[-30px] w-32 h-32 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
+
+        {/* Header */}
+        <div className="relative z-10 flex items-start justify-between mb-4">
+          <div>
+            <p className="text-[10px] tracking-[0.25em] uppercase text-[#f5e6c8]/70">
+              Cakeroven Loyalty
+            </p>
+            <h1 className="text-xl font-extrabold mt-1">Digital Stamp Card</h1>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[#f5e6c8]/60">
+              Member ID
+            </p>
+            <p className="text-sm font-mono font-bold mt-0.5">
+              {card.memberCode || card.member_code}
+            </p>
+          </div>
         </div>
 
-        <h2 className="mb-5 text-2xl font-semibold leading-snug">
-          Digital Stamp Card
-        </h2>
+        {/* Holder info */}
+        <div className="relative z-10 mb-4 space-y-1">
+          <p className="text-[11px] text-[#f5e6c8]/70">Card Holder</p>
+          <p className="text-lg font-semibold">{card.name}</p>
 
-        {/* card holder */}
-        <div className="mb-5 space-y-1 text-sm">
-          <p className="text-xs text-[#f5e6c8]/70">Card Holder</p>
-          <p className="text-base font-semibold">{card.name}</p>
-
-          <div className="mt-1 flex items-center gap-2 text-xs">
-            <span className="text-[#f5e6c8]/70">Phone</span>
-            <span className="font-mono text-sm">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[11px] text-[#f5e6c8]/70">Phone:</span>
+            <span className="font-mono">
               {showPhone ? card.phone : maskedPhone}
             </span>
             <button
-              type="button"
               onClick={() => setShowPhone((v) => !v)}
-              className="rounded-full border border-[#f5e6c8]/40 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-[#f5e6c8]/90 hover:bg-[#f5e6c8]/10"
+              className="ml-2 px-2 py-0.5 rounded-full text-[11px] border border-[#f5e6c8]/40 hover:bg-[#f5e6c8]/10"
             >
-              {showPhone ? "Hide" : "Show"}
+              {showPhone ? "HIDE" : "SHOW"}
             </button>
           </div>
         </div>
 
-        {/* progress / CTA */}
-        <div className="mb-4 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 items-center rounded-full bg-[#f5e6c8]/10 px-3 font-mono">
-              {card.currentStamps}/12
+        {/* Progress & info */}
+        <div className="relative z-10 mb-4 flex items-center justify-between text-[11px]">
+          <div className="flex items-baseline gap-1">
+            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/25 font-mono text-[11px]">
+              {card.currentStamps ?? card.current_stamps}/12
             </span>
             <span className="text-[#f5e6c8]/80">
-              {card.currentStamps === 0
-                ? "12 stamps to your next treat."
-                : `${12 - card.currentStamps} to your next treat.`}
+              {card.currentStamps === 12 || card.current_stamps === 12
+                ? "Reward unlocked! 🎉"
+                : "stamps to your next treat."}
             </span>
           </div>
-          <span className="rounded-full bg-[#f5e6c8]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#f5e6c8]/90">
-            Pay ₹500+ = 1 stamp
-          </span>
+          <div className="text-[10px] px-2 py-1 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30">
+            PAY ₹500+ = 1 STAMP
+          </div>
         </div>
 
-        {/* stamp board */}
-        <div className="rounded-3xl bg-[#3f120f] px-5 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.7)]">
-          <div className="mb-3 flex items-center justify-between text-xs">
-            <p>
-              Collect{" "}
-              <span className="font-semibold">12 stamps</span> to unlock a
-              special CakeRoven treat 🎁
-            </p>
-            <span className="rounded-full bg-[#f5e6c8]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide">
-              Board
+        {/* Stamp board */}
+        <div className="relative z-10 mb-4 rounded-3xl bg-[#3d0f0b]/70 border border-[#f5e6c8]/10 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[11px] text-[#f5e6c8]/80">
+              <p>
+                Collect <span className="font-semibold">12 stamps</span> to
+                unlock a special CakeRoven treat 🎁
+              </p>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30">
+              BOARD
             </span>
           </div>
 
           <div className="grid grid-cols-4 gap-3">
-            {stamps.map((num) => {
-              const filled = num <= card.currentStamps;
+            {Array.from({ length: 12 }).map((_, i) => {
+              const num = i + 1;
+              const filled =
+                (card.currentStamps ?? card.current_stamps ?? 0) >= num;
               return (
                 <div
                   key={num}
-                  className={`flex h-11 w-11 items-center justify-center rounded-full border text-sm transition ${
+                  className={`w-10 h-10 rounded-full border flex items-center justify-center text-sm font-semibold ${
                     filled
-                      ? "border-[#f5e6c8] bg-[#f5e6c8]/90 text-[#501914]"
+                      ? "bg-[#f5e6c8] text-[#501914] border-transparent shadow-[0_0_12px_rgba(0,0,0,0.4)]"
                       : "border-[#f5e6c8]/35 text-[#f5e6c8]/80"
                   }`}
                 >
@@ -191,32 +160,19 @@ export default function Card() {
           </div>
         </div>
 
-        {/* footer text */}
-        <div className="mt-4 space-y-1 text-[11px] text-[#f5e6c8]/75">
+        {/* Footer text */}
+        <div className="relative z-10 text-[10px] text-[#f5e6c8]/75 space-y-1">
           <p>
             Show this card at the counter after each visit. Every bill of{" "}
-            <span className="font-semibold">₹500 or more</span> earns one stamp.
+            <span className="font-semibold">₹500 or more</span> earns{" "}
+            <span className="font-semibold">1 stamp</span>.
           </p>
           <p>
-            After collecting 12 stamps, you&apos;re eligible for a complimentary
-            CakeRoven treat. Rewards completed:{" "}
-            <span className="font-semibold">{card.totalRewards}</span>
+            After collecting 12 stamps, you’re eligible for a complimentary
+            CakeRoven treat.
           </p>
         </div>
-
-        {highlightReward && (
-          <div className="mt-3 rounded-2xl bg-emerald-500/15 px-3 py-2 text-xs text-emerald-50">
-            🎉 This customer just completed 12 stamps! They&apos;re eligible for
-            a complimentary CakeRoven treat.
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-3 rounded-2xl bg-red-500/15 px-3 py-2 text-xs text-red-100">
-            {error}
-          </div>
-        )}
-      </motion.div>
+      </div>
     </div>
   );
 }
