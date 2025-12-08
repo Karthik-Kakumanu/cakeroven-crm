@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+import { API_BASE } from "../apiConfig";
+
 
 export default function AdminLogin() {
   const navigate = useNavigate();
