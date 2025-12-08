@@ -1,3 +1,4 @@
+// backend/src/app.js
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -8,13 +9,9 @@ const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
-// ====== GLOBAL MIDDLEWARE (must come before routes) ======
-app.use(
-  cors({
-    origin: ["http://localhost:5173", "https://cakeroven-crm.onrender.com"],
-  })
-);
-
+// ====== GLOBAL MIDDLEWARE ======
+// open CORS while you are testing – frontend & admin both can call
+app.use(cors());
 app.use(express.json());
 
 // ====== SIMPLE TEST ROUTES ======
