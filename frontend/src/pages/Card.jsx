@@ -291,7 +291,7 @@ export default function Card() {
               </div>
 
               <div className="text-[10px] px-2 py-1 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30 whitespace-nowrap">
-                PAY ₹500+ = 1 STAMP
+                PAY ₹1000+ = 1 STAMP
               </div>
             </motion.div>
 
@@ -340,7 +340,7 @@ export default function Card() {
               <div>
                 <p>
                   Show this card at the counter after each visit. Every bill of{" "}
-                  <span className="font-semibold">₹500 or more</span> earns{" "}
+                  <span className="font-semibold">₹1000 or more</span> earns{" "}
                   <span className="font-semibold">1 stamp</span>.
                 </p>
                 <p className="mt-1">
