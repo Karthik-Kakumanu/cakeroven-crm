@@ -18,7 +18,7 @@ function App() {
       <Route path="/card" element={<Card />} />
 
       {/* Admin side */}
-      <Route path="/admin-login" element={<AdminLogin />} />
+      <Route path="/admin" element={<AdminLogin />} />
       <Route path="/admin-dashboard" element={<AdminDashboard />} />
     </Routes>
   );

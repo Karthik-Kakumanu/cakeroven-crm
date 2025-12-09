@@ -73,7 +73,7 @@ export default function AdminDashboard() {
   // ---------- initial fetch ----------
   useEffect(() => {
     if (!token) {
-      navigate("/admin-login");
+      navigate("/admin");
       return;
     }
 
@@ -92,7 +92,7 @@ export default function AdminDashboard() {
             alert("Session expired. Please login again.");
             localStorage.removeItem("cr_adminToken");
             localStorage.removeItem("cr_adminUsername");
-            navigate("/admin-login");
+            navigate("/admin");
             return;
           }
           alert(data.message || "Failed to load customers");
@@ -135,7 +135,7 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem("cr_adminToken");
     localStorage.removeItem("cr_adminUsername");
-    navigate("/admin-login");
+    navigate("/admin");
   };
 
   const handleAddStamp = async (memberCode) => {
