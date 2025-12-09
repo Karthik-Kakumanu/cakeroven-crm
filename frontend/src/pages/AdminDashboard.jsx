@@ -70,6 +70,26 @@ export default function AdminDashboard() {
     };
   }, [customers]);
 
+  // ---------- customers close to reward (9,10,11 stamps etc.) ----------
+  const almostReward = useMemo(() => {
+    if (!customers.length) return [];
+
+    // filter customers who have 9–11 stamps (close to 12)
+    const closeOnes = customers.filter((c) => {
+      const s = Number(c.current_stamps || 0);
+      return s >= 9 && s < 12;
+    });
+
+    // sort by current_stamps descending → 11,10,9
+    closeOnes.sort((a, b) => {
+      const sa = Number(a.current_stamps || 0);
+      const sb = Number(b.current_stamps || 0);
+      return sb - sa;
+    });
+
+    return closeOnes;
+  }, [customers]);
+
   // ---------- initial fetch ----------
   useEffect(() => {
     if (!token) {
@@ -267,7 +287,7 @@ export default function AdminDashboard() {
                   Search by name, phone or member ID.
                 </p>
               </div>
-              <p className="hidden md:block text-[11px] text-[#f5e6c8]/60">
+              <p className="hidden md:block text-[11px] text-[#f5e6c8]/60 text-right">
                 Click <span className="font-semibold">+1</span> after bills of{" "}
                 <span className="font-semibold">₹500+</span>. Use{" "}
                 <span className="font-semibold">Undo</span> to fix mistakes.
@@ -333,122 +353,190 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Table */}
-        <div className="bg-white/95 rounded-3xl shadow-[0_0_35px_rgba(0,0,0,0.20)] overflow-hidden border border-[#f3dcaa]">
-          {loading ? (
-            <div className="p-6 text-center text-[#501914] text-sm">
-              Loading customers…
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="p-6 text-center text-[#501914]/70 text-sm">
-              No customers found.
-            </div>
-          ) : (
-            <div className="w-full overflow-x-auto">
-              <table className="min-w-full text-sm text-left">
-                <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wide">
-                  <tr>
-                    <th className="px-4 py-3">S.No</th>
-                    <th className="px-4 py-3">Member ID</th>
-                    <th className="px-4 py-3">Name</th>
-                    <th className="px-4 py-3">Phone</th>
-                    <th className="px-4 py-3">Date of birth</th>
-                    <th className="px-4 py-3">Stamps (0–12)</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((c, index) => {
-                    const stamps = Number(c.current_stamps || 0);
-                    const rewards = Number(c.total_rewards || 0);
-                    const progress = Math.max(
-                      0,
-                      Math.min(12, stamps)
-                    );
+        {/* Main sheet (left) + "almost reward" sheet (right) */}
+        <div className="grid gap-4 lg:grid-cols-[2.1fr,1fr] items-start">
+          {/* LEFT: big customer table */}
+          <div className="bg-white/95 rounded-3xl shadow-[0_0_35px_rgba(0,0,0,0.20)] overflow-hidden border border-[#f3dcaa]">
+            {loading ? (
+              <div className="p-6 text-center text-[#501914] text-sm">
+                Loading customers…
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="p-6 text-center text-[#501914]/70 text-sm">
+                No customers found.
+              </div>
+            ) : (
+              <div className="w-full overflow-x-auto">
+                <table className="min-w-full text-sm text-left">
+                  <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wide">
+                    <tr>
+                      <th className="px-4 py-3">S.No</th>
+                      <th className="px-4 py-3">Member ID</th>
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Phone</th>
+                      <th className="px-4 py-3">Date of birth</th>
+                      <th className="px-4 py-3">Stamps (0–12)</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((c, index) => {
+                      const stamps = Number(c.current_stamps || 0);
+                      const rewards = Number(c.total_rewards || 0);
+                      const progress = Math.max(0, Math.min(12, stamps));
 
-                    return (
-                      <tr
-                        key={c.member_code}
-                        className={
-                          index % 2 === 0
-                            ? "bg-[#fef7e8]"
-                            : "bg-[#f9ecce]"
-                        }
-                      >
-                        <td className="px-4 py-3 text-xs text-[#501914]/80">
-                          {index + 1}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs font-semibold text-[#501914]">
-                          {c.member_code}
-                        </td>
-                        <td className="px-4 py-3 text-[#501914]">
-                          {c.name}
-                        </td>
-                        <td className="px-4 py-3 text-[#501914]/90">
-                          {c.phone}
-                        </td>
-                        <td className="px-4 py-3 text-[#501914]/80 text-xs">
-                          {formatDate(c.dob)}
-                        </td>
+                      return (
+                        <tr
+                          key={c.member_code}
+                          className={
+                            index % 2 === 0
+                              ? "bg-[#fef7e8]"
+                              : "bg-[#f9ecce]"
+                          }
+                        >
+                          <td className="px-4 py-3 text-xs text-[#501914]/80">
+                            {index + 1}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs font-semibold text-[#501914]">
+                            {c.member_code}
+                          </td>
+                          <td className="px-4 py-3 text-[#501914]">
+                            {c.name}
+                          </td>
+                          <td className="px-4 py-3 text-[#501914]/90">
+                            {c.phone}
+                          </td>
+                          <td className="px-4 py-3 text-[#501914]/80 text-xs">
+                            {formatDate(c.dob)}
+                          </td>
 
-                        {/* NEW: prettier stamps cell */}
-                        <td className="px-4 py-3">
-                          <div className="w-40 max-w-full flex flex-col gap-1">
-                            <div className="flex items-center justify-between">
+                          {/* Stamps cell */}
+                          <td className="px-4 py-3">
+                            <div className="w-40 max-w-full flex flex-col gap-1">
+                              <div className="flex items-center justify-between">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-[11px] font-semibold text-[#92400e]">
+                                  {stamps}/12
+                                </span>
+                                <span className="text-[11px] text-[#501914]/70">
+                                  Rewards{" "}
+                                  <span className="font-semibold">
+                                    {rewards}
+                                  </span>
+                                </span>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-[#3b0f0c]/20 overflow-hidden">
+                                <div
+                                  className="h-full bg-[#fbbf24]"
+                                  style={{
+                                    width: `${(progress / 12) * 100}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() =>
+                                  handleRemoveStamp(c.member_code)
+                                }
+                                disabled={removingFor === c.member_code}
+                                className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#501914]/30 text-[#501914] bg-white/80 hover:bg-white disabled:opacity-60 shadow-sm"
+                              >
+                                {removingFor === c.member_code
+                                  ? "Undoing…"
+                                  : "Undo"}
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleAddStamp(c.member_code)
+                                }
+                                disabled={addingFor === c.member_code}
+                                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[#501914] text-[#f5e6c8] hover:bg-[#3f120f] shadow-[0_4px_10px_rgba(0,0,0,0.35)] disabled:opacity-60"
+                              >
+                                {addingFor === c.member_code
+                                  ? "Updating…"
+                                  : "+1"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: customers nearly at 12 stamps */}
+          <div className="space-y-3">
+            <div className="bg-white rounded-3xl shadow-[0_0_25px_rgba(0,0,0,0.18)] border border-[#f3dcaa] p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-sm font-semibold text-[#501914]">
+                    Almost at reward
+                  </p>
+                  <p className="text-[11px] text-[#501914]/70">
+                    Customers with 9–11 stamps (sorted by most stamps).
+                  </p>
+                </div>
+              </div>
+
+              {almostReward.length === 0 ? (
+                <p className="text-xs text-[#501914]/70 mt-2">
+                  No members are currently between 9 and 11 stamps.
+                </p>
+              ) : (
+                <div className="mt-2 overflow-hidden rounded-2xl border border-[#f3dcaa] bg-[#fffaf0]">
+                  <table className="w-full text-xs">
+                    <thead className="bg-[#501914] text-[#f5e6c8] text-[11px] uppercase tracking-wide">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Member</th>
+                        <th className="px-3 py-2 text-left">Name</th>
+                        <th className="px-3 py-2 text-center">Stamps</th>
+                        <th className="px-3 py-2 text-center">Left</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {almostReward.map((c) => {
+                        const stamps = Number(c.current_stamps || 0);
+                        const left = 12 - stamps;
+
+                        return (
+                          <tr
+                            key={c.member_code}
+                            className="odd:bg-[#fff7e3] even:bg-[#ffefd0]"
+                          >
+                            <td className="px-3 py-2 font-mono text-[11px] text-[#501914]">
+                              {c.member_code}
+                            </td>
+                            <td className="px-3 py-2 text-[#501914] truncate">
+                              {c.name}
+                            </td>
+                            <td className="px-3 py-2 text-center">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-[11px] font-semibold text-[#92400e]">
                                 {stamps}/12
                               </span>
-                              <span className="text-[11px] text-[#501914]/70">
-                                Rewards{" "}
-                                <span className="font-semibold">
-                                  {rewards}
-                                </span>
-                              </span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-[#3b0f0c]/20 overflow-hidden">
-                              <div
-                                className="h-full bg-[#fbbf24]"
-                                style={{
-                                  width: `${(progress / 12) * 100}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </td>
+                            </td>
+                            <td className="px-3 py-2 text-center text-[#501914]/80">
+                              {left}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() =>
-                                handleRemoveStamp(c.member_code)
-                              }
-                              disabled={removingFor === c.member_code}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#501914]/30 text-[#501914] bg-white/80 hover:bg-white disabled:opacity-60 shadow-sm"
-                            >
-                              {removingFor === c.member_code
-                                ? "Undoing…"
-                                : "Undo"}
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleAddStamp(c.member_code)
-                              }
-                              disabled={addingFor === c.member_code}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[#501914] text-[#f5e6c8] hover:bg-[#3f120f] shadow-[0_4px_10px_rgba(0,0,0,0.35)] disabled:opacity-60"
-                            >
-                              {addingFor === c.member_code
-                                ? "Updating…"
-                                : "+1"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <p className="mt-3 text-[10px] text-[#501914]/65">
+                Tip: focus on these members for special reminders or offers –
+                they&apos;re closest to unlocking a free CakeRoven treat 🎁
+              </p>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
