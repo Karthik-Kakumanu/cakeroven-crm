@@ -88,126 +88,134 @@ export default function Card() {
       ? "••••••" + card.phone.slice(-3)
       : "••••••••••";
 
+  // Background style using logo in public/
+  const cardBgStyle = {
+    backgroundImage: "url('/cakeroven-logo.png')",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "18px 18px", // tweak to position logo nicely
+    backgroundSize: "90px", // tweak size as needed
+  };
+
   return (
     <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-[32px] shadow-[0_30px_75px_rgba(0,0,0,0.65)] text-[#f5e6c8] p-6 relative overflow-hidden">
+      <div
+        className="w-full max-w-sm rounded-[32px] shadow-[0_30px_75px_rgba(0,0,0,0.65)] text-[#f5e6c8] p-6 relative overflow-hidden"
+        style={cardBgStyle}
+      >
+        {/* Gradient overlay so logo stays subtle and text remains readable */}
+        <div className="absolute inset-0 rounded-[32px] bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] opacity-95" />
+
         {/* Glows */}
         <div className="absolute -top-16 right-[-40px] w-40 h-40 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
         <div className="absolute bottom-[-30px] left-[-30px] w-36 h-36 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
 
-        {/* Header row */}
-        <div className="relative z-10 flex items-start justify-between mb-5">
-          <div>
-            <p className="text-[10px] tracking-[0.25em] uppercase text-[#f5e6c8]/70">
-              CAKEROVEN LOYALTY
-            </p>
-            <h1 className="text-xl font-extrabold mt-1">
-              Digital Stamp Card
-            </h1>
+        {/* Content (above overlay) */}
+        <div className="relative z-10">
+          {/* Header row */}
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <p className="text-[10px] tracking-[0.25em] uppercase text-[#f5e6c8]/70">
+                CAKEROVEN LOYALTY
+              </p>
+              <h1 className="text-xl font-extrabold mt-1">Digital Stamp Card</h1>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[#f5e6c8]/60">
+                Member ID
+              </p>
+              <p className="text-sm font-mono font-bold mt-0.5">{memberCode}</p>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-[#f5e6c8]/60">
-              Member ID
-            </p>
-            <p className="text-sm font-mono font-bold mt-0.5">{memberCode}</p>
+
+          {/* Holder info */}
+          <div className="mb-4 space-y-1">
+            <p className="text-[11px] text-[#f5e6c8]/70">Card Holder</p>
+            <p className="text-lg font-semibold truncate">{card.name}</p>
+
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-[11px] text-[#f5e6c8]/70">Phone:</span>
+              <span className="font-mono">{showPhone ? card.phone : maskedPhone}</span>
+              <button
+                onClick={() => setShowPhone((v) => !v)}
+                className="ml-2 px-2 py-0.5 rounded-full text-[11px] border border-[#f5e6c8]/40 hover:bg-[#f5e6c8]/10 transition-colors"
+              >
+                {showPhone ? "HIDE" : "SHOW"}
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Holder info */}
-        <div className="relative z-10 mb-4 space-y-1">
-          <p className="text-[11px] text-[#f5e6c8]/70">Card Holder</p>
-          <p className="text-lg font-semibold truncate">{card.name}</p>
+          {/* Progress & rule chip */}
+          <div className="mb-4 flex items-center justify-between text-[11px]">
+            <div className="flex items-baseline gap-2">
+              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/25 font-mono text-[11px]">
+                {stamps}/12
+              </span>
+              <span className="text-[#f5e6c8]/80">
+                {isRewardReady ? "Reward unlocked! 🎉 Show this card to claim." : "stamps to your next treat."}
+              </span>
+            </div>
+            <div className="text-[10px] px-2 py-1 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30 whitespace-nowrap">
+              PAY ₹1000+ = 1 STAMP
+            </div>
+          </div>
 
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-[11px] text-[#f5e6c8]/70">Phone:</span>
-            <span className="font-mono">
-              {showPhone ? card.phone : maskedPhone}
-            </span>
+          {/* Stamp board */}
+          <div className="mb-4 rounded-3xl bg-[#3d0f0b]/70 border border-[#f5e6c8]/10 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[11px] text-[#f5e6c8]/80">
+                <p>
+                  Collect <span className="font-semibold">12 stamps</span> to unlock a special CakeRoven treat 🎁
+                </p>
+                {rewards > 0 && (
+                  <p className="mt-1 text-[#ffe8bf]/90">
+                    Rewards earned so far: <span className="font-semibold">{rewards}</span>
+                  </p>
+                )}
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30">
+                BOARD
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-3">
+              {Array.from({ length: 12 }).map((_, i) => {
+                const index = i + 1;
+                const filled = stamps >= index;
+
+                return (
+                  <div
+                    key={index}
+                    className={`w-10 h-10 rounded-full border flex items-center justify-center text-sm font-semibold transition-all ${
+                      filled
+                        ? "bg-[#f5e6c8] text-[#501914] border-transparent shadow-[0_0_12px_rgba(0,0,0,0.5)] scale-[1.03]"
+                        : "border-[#f5e6c8]/35 text-[#f5e6c8]/80"
+                    }`}
+                  >
+                    {index}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Footer text + switch user */}
+          <div className="flex flex-col gap-2 text-[10px] text-[#f5e6c8]/75">
+            <p>
+              Show this card at the counter after each visit. Every bill of{" "}
+              <span className="font-semibold">₹1000 or more</span> earns{" "}
+              <span className="font-semibold">1 stamp</span>.
+            </p>
+            <p>
+              After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat : A gift Hamper Or Else A Cake!
+            </p>
+
             <button
-              onClick={() => setShowPhone((v) => !v)}
-              className="ml-2 px-2 py-0.5 rounded-full text-[11px] border border-[#f5e6c8]/40 hover:bg-[#f5e6c8]/10 transition-colors"
+              onClick={handleSwitchUser}
+              className="self-start mt-1 px-2.5 py-1 rounded-full border border-[#f5e6c8]/40 text-[10px] text-[#f5e6c8]/80 hover:bg-[#f5e6c8]/10 transition-colors"
             >
-              {showPhone ? "HIDE" : "SHOW"}
+              Not you? Switch user
             </button>
           </div>
-        </div>
-
-        {/* Progress & rule chip */}
-        <div className="relative z-10 mb-4 flex items-center justify-between text-[11px]">
-          <div className="flex items-baseline gap-2">
-            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/25 font-mono text-[11px]">
-              {stamps}/12
-            </span>
-            <span className="text-[#f5e6c8]/80">
-              {isRewardReady
-                ? "Reward unlocked! 🎉 Show this card to claim."
-                : "stamps to your next treat."}
-            </span>
-          </div>
-          <div className="text-[10px] px-2 py-1 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30 whitespace-nowrap">
-            PAY ₹1000+ = 1 STAMP
-          </div>
-        </div>
-
-        {/* Stamp board */}
-        <div className="relative z-10 mb-4 rounded-3xl bg-[#3d0f0b]/70 border border-[#f5e6c8]/10 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[11px] text-[#f5e6c8]/80">
-              <p>
-                Collect <span className="font-semibold">12 stamps</span> to
-                unlock a special CakeRoven treat 🎁
-              </p>
-              {rewards > 0 && (
-                <p className="mt-1 text-[#ffe8bf]/90">
-                  Rewards earned so far:{" "}
-                  <span className="font-semibold">{rewards}</span>
-                </p>
-              )}
-            </div>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30">
-              BOARD
-            </span>
-          </div>
-
-          <div className="grid grid-cols-4 gap-3">
-            {Array.from({ length: 12 }).map((_, i) => {
-              const index = i + 1;
-              const filled = stamps >= index;
-
-              return (
-                <div
-                  key={index}
-                  className={`w-10 h-10 rounded-full border flex items-center justify-center text-sm font-semibold transition-all ${
-                    filled
-                      ? "bg-[#f5e6c8] text-[#501914] border-transparent shadow-[0_0_12px_rgba(0,0,0,0.5)] scale-[1.03]"
-                      : "border-[#f5e6c8]/35 text-[#f5e6c8]/80"
-                  }`}
-                >
-                  {index}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Footer text + switch user */}
-        <div className="relative z-10 flex flex-col gap-2 text-[10px] text-[#f5e6c8]/75">
-          <p>
-            Show this card at the counter after each visit. Every bill of{" "}
-            <span className="font-semibold">₹1000 or more</span> earns{" "}
-            <span className="font-semibold">1 stamp</span>.
-          </p>
-          <p>
-            After collecting 12 stamps, you’re eligible for a complimentary
-            CakeRoven treat : A gift Hamper Or Else A Cake!
-          </p>
-
-          <button
-            onClick={handleSwitchUser}
-            className="self-start mt-1 px-2.5 py-1 rounded-full border border-[#f5e6c8]/40 text-[10px] text-[#f5e6c8]/80 hover:bg-[#f5e6c8]/10 transition-colors"
-          >
-            Not you? Switch user
-          </button>
         </div>
       </div>
     </div>
