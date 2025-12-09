@@ -199,7 +199,7 @@ export default function Card() {
           </p>
           <p>
             After collecting 12 stamps, you’re eligible for a complimentary
-            CakeRoven treat.
+            CakeRoven treat : A gift Hamper Or Else A Cake!
           </p>
 
           <button
