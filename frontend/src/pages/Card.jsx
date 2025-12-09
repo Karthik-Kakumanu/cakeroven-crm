@@ -325,7 +325,7 @@ export default function Card() {
                           ? "bg-[#f5e6c8] text-[#501914] border-transparent shadow-[0_6px_18px_rgba(0,0,0,0.45)] transform scale-105"
                           : "border-[#f5e6c8]/35 text-[#f5e6c8]/80 bg-transparent"
                       }`}
-                      aria-label={Stamp ${index} ${filled ? "collected" : "empty"}}
+                      aria-label={`Stamp ${index} ${filled ? "collected" : "empty"}`}
                       role="img"
                     >
                       {filled ? "✓" : index}
@@ -362,7 +362,7 @@ export default function Card() {
                     if (isRewardReady) {
                       alert("🎉 Reward ready! Show this card to the staff to claim your treat.");
                     } else {
-                      alert(You have ${stamps}/12 stamps.);
+                      alert(`You have ${stamps}/12 stamps.`);
                     }
                   }}
                   className="ml-auto px-3 py-1 rounded-full bg-[#ffe8bf] text-[#501914] text-sm font-medium hover:brightness-95 transition"
