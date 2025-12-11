@@ -1,14 +1,10 @@
+// backend/src/routes/customerRoutes.js
 const express = require("express");
 const router = express.Router();
-const admin = require("../controllers/adminController");
-const adminAuth = require("../middleware/adminAuth");
+const customer = require("../controllers/customerController");
 
-// Public
-router.post("/login", admin.login);
-
-// Protected
-router.get("/customers", adminAuth, admin.getCustomers);
-router.post("/add-stamp", adminAuth, admin.addStamp);
-router.post("/remove-stamp", adminAuth, admin.removeStamp); // 👈 new
+router.post("/register", customer.register);
+router.post("/login-by-phone", customer.loginByPhone);
+router.get("/card/:memberCode", customer.getCard);
 
 module.exports = router;

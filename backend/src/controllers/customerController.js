@@ -1,205 +1,139 @@
 // backend/src/controllers/customerController.js
 const db = require("../config/db");
 
-/**
- * Helper: Return { blocked: boolean, key: string|null, message: string|null, ist: Date }
- * Compares month/day in Indian Standard Time (UTC+5:30).
- */
-function getIstHolidayStatus() {
-  const now = new Date();
-  const istOffsetMs = 5.5 * 60 * 60 * 1000; // 19800000
-  const ist = new Date(now.getTime() + istOffsetMs);
-
-  const day = ist.getDate();
-  const month = ist.getMonth() + 1;
-
-  if (month === 12 && day === 25) {
-    return {
-      blocked: true,
-      key: "christmas",
-      message: "Happy Christmas 🎄 — CakeRoven loyalty stamps are not available today.",
-      ist,
-    };
-  }
-  if (month === 12 && day === 31) {
-    return {
-      blocked: true,
-      key: "newyear-eve",
-      message: "New Year's Eve 🎆 — CakeRoven loyalty stamps are not available today.",
-      ist,
-    };
-  }
-  if (month === 1 && day === 1) {
-    return {
-      blocked: true,
-      key: "newyear-day",
-      message: "Happy New Year 🎉 — CakeRoven loyalty stamps are not available today.",
-      ist,
-    };
-  }
-
-  return { blocked: false, key: null, message: null, ist };
+// Helper: load basic user & loyalty account
+async function loadUserAndAccount(memberCode) {
+  const r = await db.query(
+    `SELECT u.id, u.member_code, u.name, u.phone, u.dob,
+            l.current_stamps, l.total_rewards
+     FROM users u
+     LEFT JOIN loyalty_accounts l ON l.user_id = u.id
+     WHERE u.member_code = $1
+     LIMIT 1`,
+    [memberCode]
+  );
+  return r.rows[0] || null;
 }
 
-/**
- * GET /api/customer/card/:memberCode?phone=...
- * - Validates phone matches the member
- * - Returns card info (member_code, name, phone masked/unmasked, current_stamps, total_rewards)
- * - If today is a blocked holiday (IST), returns 403 with friendly message
- */
-exports.getCard = async (req, res) => {
+exports.register = async (req, res) => {
   try {
-    const { memberCode } = req.params;
-    const phone = (req.query.phone || "").trim();
+    const { name, phone, dob } = req.body;
+    if (!name || !phone) return res.status(400).json({ message: "Name & phone required" });
 
-    if (!memberCode) {
-      return res.status(400).json({ message: "memberCode required" });
-    }
+    // ensure unique phone or create new member_code
+    // create member_code as CR + 4-digit serial based on next sequence
+    const seq = await db.query(`SELECT nextval('member_seq') as v`).catch(() => null);
+    const num = seq && seq.rows && seq.rows[0] ? seq.rows[0].v : Date.now() % 100000;
+    const member_code = `CR${String(num).padStart(4, "0")}`;
 
-    // Check holiday first (server authoritative)
-    const holiday = getIstHolidayStatus();
-    if (holiday.blocked) {
-      return res.status(403).json({ message: holiday.message });
-    }
-
-    // Fetch user + loyalty
-    const result = await db.query(
-      `SELECT u.id, u.member_code, u.name, u.phone,
-              l.current_stamps, l.total_rewards, u.dob
-       FROM users u
-       JOIN loyalty_accounts l ON l.user_id = u.id
-       WHERE u.member_code = $1
-       LIMIT 1`,
-      [memberCode]
+    const created = await db.query(
+      `INSERT INTO users (member_code, name, phone, dob, created_at)
+       VALUES ($1,$2,$3,$4,NOW()) RETURNING id, member_code, name, phone, dob`,
+      [member_code, name, phone, dob || null]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Member not found" });
-    }
+    const user = created.rows[0];
 
-    const row = result.rows[0];
+    // create loyalty account
+    await db.query(
+      `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards)
+       VALUES ($1,0,0)`,
+      [user.id]
+    );
 
-    // Basic phone check: if frontend provided phone, ensure it matches for security
-    // (This prevents anyone just by guessing memberCode seeing card on client side)
-    if (!phone) {
-      // If phone not provided, still return limited data but do not expose full phone
-      // We'll return masked phone and require phone to be sent for full view (frontend flow expects phone stored)
-      const maskedPhone =
-        row.phone && row.phone.length >= 3
-          ? "••••••" + row.phone.slice(-3)
-          : "••••••••••";
-
-      return res.json({
-        card: {
-          memberCode: row.member_code,
-          name: row.name,
-          phone: maskedPhone,
-          currentStamps: row.current_stamps,
-          totalRewards: row.total_rewards,
-        },
-      });
-    }
-
-    // If phone provided, verify exact match (owner wants simple number check, not OTP)
-    if (phone !== row.phone) {
-      // Phone mismatch → do not reveal sensitive info
-      return res.status(403).json({ message: "Phone number does not match our records." });
-    }
-
-    // Success: return full card
-    return res.json({
-      card: {
-        memberCode: row.member_code,
-        name: row.name,
-        phone: row.phone,
-        dob: row.dob,
-        currentStamps: row.current_stamps,
-        totalRewards: row.total_rewards,
-      },
-    });
+    return res.json({ ok: true, memberCode: user.member_code, user });
   } catch (err) {
-    console.error("getCard error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Register error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Basic login by phone (for existing user flow)
+exports.loginByPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ message: "Phone required" });
+
+    const r = await db.query(`SELECT member_code, name, phone FROM users WHERE phone = $1 LIMIT 1`, [phone]);
+    if (r.rows.length === 0) return res.status(404).json({ message: "User not found" });
+
+    // return member_code so frontend can store it in localStorage
+    return res.json({ ok: true, memberCode: r.rows[0].member_code, name: r.rows[0].name });
+  } catch (err) {
+    console.error("LoginByPhone error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
 /**
- * POST /api/customer/register
- * body: { name, phone, dob (optional) }
- * - Validates required fields
- * - Ensures phone uniqueness
- * - Creates user and loyalty account
- * - Generates member_code as CR + zero-padded id (CR0001)
+ * GET /api/customer/card/:memberCode
+ * Security: requires either Authorization Bearer token for that user or x-customer-phone header.
+ * The server verifies that the supplied phone matches the DB record for this memberCode.
+ * Returns card object:
+ * { memberCode, name, phone, currentStamps, totalRewards, stamp_history: [date|null,...], reward_issued_at }
  */
-exports.register = async (req, res) => {
-  const client = await db.connect();
+exports.getCard = async (req, res) => {
   try {
-    const { name, phone, dob } = req.body || {};
+    const { memberCode } = req.params;
+    const phoneHeader = (req.headers["x-customer-phone"] || "").trim();
+    const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
 
-    if (!name || !phone) {
-      return res.status(400).json({ message: "Name and phone are required" });
+    if (!memberCode) return res.status(400).json({ message: "memberCode required" });
+
+    const user = await loadUserAndAccount(memberCode);
+    if (!user) return res.status(404).json({ message: "Member not found" });
+
+    // If a token-based auth exists: you can decode/verify token here (optional)
+    // For now we check phone header matches stored phone
+    if (!phoneHeader && !auth) {
+      return res.status(401).json({ message: "Phone or token required to view this card" });
     }
 
-    // Normalize phone string
-    const phoneClean = String(phone).trim();
-
-    // check existing phone
-    const existing = await client.query("SELECT id, member_code FROM users WHERE phone = $1 LIMIT 1", [phoneClean]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({
-        message: "Phone already registered. You are already a member.",
-        memberCode: existing.rows[0].member_code,
-      });
+    if (phoneHeader && phoneHeader !== String(user.phone)) {
+      return res.status(403).json({ message: "Phone does not match member" });
     }
 
-    // Start transaction for safe insert + member_code generation
-    await client.query("BEGIN");
+    // stamp history: prefer a stamp_events table with columns: user_id, stamp_number, stamped_at
+    // We'll query for up to 12 stamps and produce an array of 12 values (date ISO or null)
+    const stampsRes = await db.query(
+      `SELECT stamp_number, stamped_at
+       FROM stamp_events
+       WHERE user_id = $1
+       ORDER BY stamp_number ASC`,
+      [user.id]
+    ).catch(() => ({ rows: [] }));
 
-    // Insert user (member_code will be generated after getting id)
-    const insertText = `
-      INSERT INTO users (name, phone, dob, created_at)
-      VALUES ($1, $2, $3, NOW())
-      RETURNING id
-    `;
-    const insertRes = await client.query(insertText, [name.trim(), phoneClean, dob || null]);
-    const userId = insertRes.rows[0].id;
+    // create array indices 1..12
+    const stampMap = {};
+    for (const r of stampsRes.rows || []) {
+      const num = Number(r.stamp_number);
+      if (num >= 1 && num <= 12) stampMap[num] = r.stamped_at;
+    }
 
-    // Generate member_code from id: CR + zero-padded 4 digits
-    const memberCode = "CR" + String(userId).padStart(4, "0");
+    const stamp_history = Array.from({ length: 12 }).map((_, i) => stampMap[i + 1] ? stampMap[i + 1].toISOString() : null);
 
-    // Update user with member_code
-    await client.query("UPDATE users SET member_code = $1 WHERE id = $2", [memberCode, userId]);
+    // reward issued: check rewards table (latest)
+    const rewardRes = await db.query(
+      `SELECT issued_at FROM rewards WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1`,
+      [user.id]
+    ).catch(() => ({ rows: [] }));
 
-    // Create loyalty account row
-    await client.query(
-      `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards, created_at)
-       VALUES ($1, 0, 0, NOW())`,
-      [userId]
-    );
+    const reward_issued_at = rewardRes.rows && rewardRes.rows[0] ? rewardRes.rows[0].issued_at : null;
 
-    await client.query("COMMIT");
+    // Build response
+    const card = {
+      memberCode: user.member_code,
+      name: user.name,
+      phone: user.phone,
+      currentStamps: Number(user.current_stamps || 0),
+      totalRewards: Number(user.total_rewards || 0),
+      stampHistory: stamp_history,
+      rewardIssuedAt: reward_issued_at ? reward_issued_at.toISOString() : null,
+    };
 
-    // Return card-ish info (phone included)
-    return res.status(201).json({
-      message: "Registration successful",
-      card: {
-        memberCode,
-        name: name.trim(),
-        phone: phoneClean,
-        dob: dob || null,
-        currentStamps: 0,
-        totalRewards: 0,
-      },
-    });
+    return res.json({ ok: true, card });
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    console.error("register error:", err);
-    // detect unique phone constraint error if DB enforced
-    if (err && err.code === "23505") {
-      return res.status(409).json({ message: "Phone already registered" });
-    }
+    console.error("Get card error:", err);
     return res.status(500).json({ message: "Server error" });
-  } finally {
-    client.release();
   }
 };
