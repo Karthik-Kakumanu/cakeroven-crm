@@ -3,6 +3,51 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const db = require("../config/db");
 
+/**
+ * Helper: return { blocked: boolean, key: string|null, message: string|null, istDate: Date }
+ * Checks IST date (UTC +5:30) and sees if today is Dec 25, Dec 31 or Jan 1.
+ */
+function getIstHolidayStatus() {
+  const now = new Date();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + istOffsetMs);
+
+  const day = ist.getDate(); // 1..31
+  const month = ist.getMonth() + 1; // 1..12
+
+  if (month === 12 && day === 25) {
+    return {
+      blocked: true,
+      key: "christmas",
+      message: "Happy Christmas — CakeRoven services (loyalty stamps) are not available today.",
+      ist,
+    };
+  }
+
+  if (month === 12 && day === 31) {
+    return {
+      blocked: true,
+      key: "newyear-eve",
+      message: "New Year's Eve — CakeRoven services (loyalty stamps) are not available today.",
+      ist,
+    };
+  }
+
+  if (month === 1 && day === 1) {
+    return {
+      blocked: true,
+      key: "newyear-day",
+      message: "Happy New Year — CakeRoven services (loyalty stamps) are not available today.",
+      ist,
+    };
+  }
+
+  return { blocked: false, key: null, message: null, ist };
+}
+
+/**
+ * Admin login
+ */
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -10,7 +55,6 @@ exports.login = async (req, res) => {
     if (!username || !password)
       return res.status(400).json({ message: "Username & password required" });
 
-    // Find admin in DB
     const result = await db.query(
       `SELECT id, username, password_hash, role 
        FROM admin_users 
@@ -23,12 +67,9 @@ exports.login = async (req, res) => {
 
     const admin = result.rows[0];
 
-    // Check password
     const match = await bcrypt.compare(password, admin.password_hash);
-    if (!match)
-      return res.status(401).json({ message: "Invalid credentials" });
+    if (!match) return res.status(401).json({ message: "Invalid credentials" });
 
-    // Sign token
     const token = jwt.sign(
       {
         adminId: admin.id,
@@ -51,14 +92,16 @@ exports.login = async (req, res) => {
   }
 };
 
-
+/**
+ * Get customers (admin view)
+ */
 exports.getCustomers = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT u.member_code,
+      SELECT u.id, u.member_code,
              u.name,
              u.phone,
-             u.dob,              -- 👈 add this
+             u.dob,
              l.current_stamps,
              l.total_rewards,
              u.created_at
@@ -74,14 +117,21 @@ exports.getCustomers = async (req, res) => {
   }
 };
 
-
-
+/**
+ * Add stamp - blocked on holidays
+ * POST /api/admin/add-stamp
+ * body: { memberCode }
+ */
 exports.addStamp = async (req, res) => {
   try {
+    const holiday = getIstHolidayStatus();
+    if (holiday.blocked) {
+      return res.status(403).json({ message: holiday.message });
+    }
+
     const { memberCode } = req.body;
 
-    if (!memberCode)
-      return res.status(400).json({ message: "memberCode required" });
+    if (!memberCode) return res.status(400).json({ message: "memberCode required" });
 
     const user = await db.query(
       `SELECT u.id, u.member_code, u.name, u.phone, 
@@ -92,8 +142,7 @@ exports.addStamp = async (req, res) => {
       [memberCode]
     );
 
-    if (user.rows.length === 0)
-      return res.status(404).json({ message: "User not found" });
+    if (user.rows.length === 0) return res.status(404).json({ message: "User not found" });
 
     const data = user.rows[0];
 
@@ -103,8 +152,8 @@ exports.addStamp = async (req, res) => {
     current += 1;
 
     if (current >= 12) {
-      current = 0;    // reset
-      reward += 1;    // reward
+      current = 0; // reset
+      reward += 1; // reward
     }
 
     await db.query(
@@ -130,11 +179,18 @@ exports.addStamp = async (req, res) => {
   }
 };
 
-
-// POST /api/admin/remove-stamp
-// body: { memberCode }
+/**
+ * Remove / undo stamp - blocked on holidays
+ * POST /api/admin/remove-stamp
+ * body: { memberCode }
+ */
 exports.removeStamp = async (req, res) => {
   try {
+    const holiday = getIstHolidayStatus();
+    if (holiday.blocked) {
+      return res.status(403).json({ message: holiday.message });
+    }
+
     const { memberCode } = req.body;
 
     if (!memberCode) {
@@ -177,8 +233,7 @@ exports.removeStamp = async (req, res) => {
       // just remove one stamp
       current -= 1;
     } else if (current === 0 && rewards > 0) {
-      // we assume last action was completing a reward:
-      // go back to 11 stamps and one less reward
+      // back one reward -> 11 stamps
       current = 11;
       rewards -= 1;
     }
