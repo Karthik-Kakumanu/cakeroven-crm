@@ -102,8 +102,8 @@ exports.getCustomers = async (req, res) => {
              u.name,
              u.phone,
              u.dob,
-             l.current_stamps,
-             l.total_rewards,
+             COALESCE(l.current_stamps, 0) AS current_stamps,
+             COALESCE(l.total_rewards, 0) AS total_rewards,
              u.created_at
       FROM users u
       JOIN loyalty_accounts l ON l.user_id = u.id
