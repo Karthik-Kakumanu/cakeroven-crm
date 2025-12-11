@@ -1,4 +1,4 @@
-// backend/tools/hashPassword.js
+// tools/hashPassword.js
 const bcrypt = require("bcryptjs");
 
 async function run() {
@@ -7,11 +7,9 @@ async function run() {
     console.log("Usage: node tools/hashPassword.js <password>");
     process.exit(1);
   }
-
   const hash = await bcrypt.hash(password, 10);
   console.log("Password:", password);
   console.log("Generated bcrypt hash:");
   console.log(hash);
 }
-
 run();
