@@ -1,115 +1,121 @@
 // frontend/src/pages/Card.jsx
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Secure Card page:
- * - Only shows card if localStorage has a matching memberCode and phone (or token).
- * - Does not allow reading arbitrary ?member= from URL unless localStorage has it.
- * - Displays 12 tick boxes with dates, reward date, masked phone, show/hide,
- *   and clear messaging if the system is disabled for holiday dates.
+ * Helper: Return { blocked: boolean, key: string|null, message: string|null }
+ * blocked - whether today (IST) is one of the blocked dates
+ * key - one of 'christmas' | 'newyear-eve' | 'newyear-day' or null
+ * message - friendly message to display
+ *
+ * Uses Indian Standard Time (UTC+5:30). Compares month/day ignoring year.
  */
+function getIstHolidayStatus() {
+  // Get current UTC time then convert to IST by adding 5.5 hours
+  const now = new Date();
+  // milliseconds offset for IST = 5.5 * 60 * 60 * 1000 = 19800000
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + istOffsetMs);
 
-const HOLIDAY_DATES = [
-  { month: 11, day: 25, message: "Happy Christmas — we are closed today." }, // Dec 25
-  { month: 11, day: 31, message: "Sorry — we are closed for New Year's Eve." }, // Dec 31
-  { month: 0, day: 1, message: "Happy New Year — we are closed today." }, // Jan 1
-];
+  const d = ist.getDate(); // 1..31
+  const m = ist.getMonth() + 1; // 1..12
 
-function isHolidayIST(now = new Date()) {
-  // Convert to India time by using locale string with Asia/Kolkata
-  // Create a new Date from that locale string to get local date components.
-  const indian = new Date(
-    now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
-  );
-  const m = indian.getMonth();
-  const d = indian.getDate();
-  const hit = HOLIDAY_DATES.find((h) => h.month === m && h.day === d);
-  return hit || null;
+  // Map days
+  if (m === 12 && d === 25) {
+    return {
+      blocked: true,
+      key: "christmas",
+      message: "Happy Christmas 🎄 — we are sorry for the inconvenience. CakeRoven is closed today.",
+      istDateString: ist.toISOString(),
+    };
+  }
+
+  if (m === 12 && d === 31) {
+    return {
+      blocked: true,
+      key: "newyear-eve",
+      message: "Sorry — New Year's Eve 🎆. CakeRoven is not available today.",
+      istDateString: ist.toISOString(),
+    };
+  }
+
+  if (m === 1 && d === 1) {
+    return {
+      blocked: true,
+      key: "newyear-day",
+      message: "Happy New Year 🎉 — we're taking a break. CakeRoven is closed today.",
+      istDateString: ist.toISOString(),
+    };
+  }
+
+  return { blocked: false, key: null, message: null, istDateString: ist.toISOString() };
 }
 
 export default function Card() {
   const navigate = useNavigate();
+
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPhone, setShowPhone] = useState(false);
-  const [serverMessage, setServerMessage] = useState(null);
-  const audioRef = useRef(null);
+  const [holidayInfo, setHolidayInfo] = useState({ blocked: false, key: null, message: null });
+  const [serverBlockedMessage, setServerBlockedMessage] = useState(null); // message returned by API if blocked
 
   useEffect(() => {
-    // small notification sound
-    audioRef.current = new Audio("/ding.mp3"); // include a small ding.mp3 in /public
+    // Frontend holiday check (IST)
+    setHolidayInfo(getIstHolidayStatus());
   }, []);
 
   useEffect(() => {
-    const storedMember = localStorage.getItem("cr_memberCode");
-    const storedPhone = localStorage.getItem("cr_phone");
-    const storedToken = localStorage.getItem("cr_customerToken"); // optional if you use token
+    const memberCode = localStorage.getItem("cr_memberCode");
+    const phone = localStorage.getItem("cr_phone");
 
-    // Nothing stored → redirect to start/register
-    if (!storedMember || (!storedPhone && !storedToken)) {
+    // If nothing stored → user shouldn’t be here
+    if (!memberCode || !phone) {
       navigate("/start", { replace: true });
       return;
     }
 
-    async function fetchCard() {
-      setLoading(true);
-      setServerMessage(null);
-
+    // If frontend-level holiday check blocks, we still hit API to confirm block server-side,
+    // but we will show the overlay regardless.
+    const fetchCard = async () => {
       try {
-        // Security: send phone (or token) as header/body so server can verify.
         const res = await fetch(
-          `${API_BASE}/api/customer/card/${encodeURIComponent(storedMember)}`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              // prefer token if available
-              ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
-              "x-customer-phone": storedPhone || "",
-            },
-          }
+          `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(phone)}`
         );
 
         const data = await res.json();
 
         if (!res.ok) {
-          setServerMessage(data.message || "Could not load card");
-          // force-out if unauthorized or invalid
-          if (res.status === 401 || res.status === 403) {
-            localStorage.removeItem("cr_memberCode");
-            localStorage.removeItem("cr_phone");
-            navigate("/start", { replace: true });
+          // If server responds with 403 and a holiday message, capture it
+          if (res.status === 403 && data && data.message) {
+            setServerBlockedMessage(data.message);
+            setLoading(false);
             return;
           }
-          setLoading(false);
+
+          alert(data.message || "Could not load card");
+          // clear session and send to start
+          localStorage.removeItem("cr_memberCode");
+          localStorage.removeItem("cr_phone");
+          navigate("/start", { replace: true });
           return;
         }
 
-        // success: play a gentle sound if card loaded and not first load
-        if (audioRef.current) audioRef.current.play().catch(() => {});
         setCard(data.card || data);
-      } catch (err) {
-        console.error("Card fetch error:", err);
-        setServerMessage("Server error");
-      } finally {
         setLoading(false);
+      } catch (err) {
+        console.error(err);
+        alert("Server error");
+        navigate("/start", { replace: true });
       }
-    }
-
-    // check holiday first and don't call backend if holiday
-    const holiday = isHolidayIST();
-    if (holiday) {
-      setServerMessage(holiday.message);
-      setLoading(false);
-      return;
-    }
+    };
 
     fetchCard();
-    // no dependencies except navigate — we want to run once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
+
+  // If either frontend computed holiday OR server explicitly blocked, we show blocked overlay.
+  const isBlocked = holidayInfo.blocked || Boolean(serverBlockedMessage);
 
   if (loading) {
     return (
@@ -119,18 +125,40 @@ export default function Card() {
     );
   }
 
-  if (serverMessage) {
+  if (isBlocked) {
+    // Prefer server message if present (server authoritative), else frontend message
+    const message = serverBlockedMessage || holidayInfo.message;
+    const sub = `Unavailable date (IST): ${holidayInfo.istDateString?.slice(0, 10) || ""}`;
+
     return (
       <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-6">
-        <div className="bg-white/95 rounded-2xl p-8 shadow-md max-w-xl text-center">
-          <h2 className="text-xl font-semibold text-[#501914] mb-2">Notice</h2>
-          <p className="text-[#501914]/80">{serverMessage}</p>
-          <div className="mt-6 flex justify-center">
+        <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl p-6 text-center border border-[#f3dcaa]">
+          <div className="text-6xl mb-3">⛔</div>
+          <h2 className="text-xl font-semibold text-[#501914] mb-2">Service temporarily unavailable</h2>
+          <p className="text-sm text-[#501914]/80 mb-4">{message}</p>
+          <p className="text-xs text-[#501914]/60 mb-4">{sub}</p>
+
+          <div className="flex justify-center gap-3">
             <button
-              onClick={() => navigate("/start")}
-              className="px-4 py-2 bg-[#501914] text-[#f5e6c8] rounded-full"
+              onClick={() => {
+                // let user go back to start
+                navigate("/start", { replace: true });
+              }}
+              className="px-4 py-2 rounded-full bg-[#501914] text-[#f5e6c8] font-semibold"
             >
-              Go back
+              Back
+            </button>
+
+            <button
+              onClick={() => {
+                // allow user to keep card stored and check later
+                localStorage.removeItem("cr_memberCode");
+                localStorage.removeItem("cr_phone");
+                navigate("/start", { replace: true });
+              }}
+              className="px-4 py-2 rounded-full border border-[#501914] text-[#501914] font-semibold"
+            >
+              Sign out
             </button>
           </div>
         </div>
@@ -138,124 +166,98 @@ export default function Card() {
     );
   }
 
-  if (!card) {
-    return null;
-  }
+  if (!card) return null;
 
-  // Normalize fields returned by server
-  const memberCode = card.memberCode || card.member_code;
-  const name = card.name;
-  const phone = card.phone;
-  const current = Number(card.currentStamps ?? card.current_stamps ?? 0);
-  const totalRewards = Number(card.totalRewards ?? card.total_rewards ?? 0);
-  const stampHistory = Array.isArray(card.stamp_history)
-    ? card.stamp_history // expected array of ISO strings or nulls, length <=12
-    : []; // backend should provide it
+  const maskedPhone =
+    card.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
 
-  // Ensure stampHistory has 12 items (fill missing with null)
-  const history = Array.from({ length: 12 }).map((_, i) =>
-    stampHistory[i] ? stampHistory[i] : null
-  );
-
-  const maskedPhone = phone && phone.length >= 3 ? "••••••" + phone.slice(-3) : "••••••••";
+  const currentStamps = card.currentStamps ?? card.current_stamps ?? 0;
+  const rewardUnlocked = currentStamps >= 12;
 
   return (
-    <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-6">
-      <div className="w-full max-w-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-2xl shadow-[0_30px_80px_rgba(0,0,0,0.6)] text-[#f5e6c8] p-6 relative overflow-hidden">
-        <div className="flex items-start justify-between mb-6">
+    <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-[32px] shadow-[0_25px_60px_rgba(0,0,0,0.55)] text-[#f5e6c8] p-6 relative overflow-hidden">
+        {/* Small glow accents */}
+        <div className="absolute -top-16 right-[-40px] w-40 h-40 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-30px] left-[-30px] w-32 h-32 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
+
+        {/* Header */}
+        <div className="relative z-10 flex items-start justify-between mb-4">
           <div>
-            <p className="text-xs tracking-widest uppercase text-[#f5e6c8]/70">
-              CakeRoven Loyalty
-            </p>
-            <h1 className="text-2xl font-extrabold mt-1">Digital Stamp Card</h1>
-            <p className="text-sm text-[#f5e6c8]/80 mt-1">Card Holder</p>
-            <p className="text-lg font-semibold">{name}</p>
+            <p className="text-[10px] tracking-[0.25em] uppercase text-[#f5e6c8]/70">CakeRoven Loyalty</p>
+            <h1 className="text-xl font-extrabold mt-1">Digital Stamp Card</h1>
           </div>
-
           <div className="text-right">
-            <p className="text-xs uppercase tracking-wider text-[#f5e6c8]/60">Member ID</p>
-            <p className="text-sm font-mono font-bold mt-1">{memberCode}</p>
-
-            <div className="mt-3 text-sm">
-              <div className="flex items-center justify-end gap-2">
-                <div className="text-xs text-[#f5e6c8]/75">Phone</div>
-                <div className="font-mono">{showPhone ? phone : maskedPhone}</div>
-                <button
-                  onClick={() => setShowPhone((v) => !v)}
-                  className="ml-2 px-2 py-1 rounded-full text-xs bg-[#f5e6c8]/10 border border-[#f5e6c8]/20"
-                >
-                  {showPhone ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[#f5e6c8]/60">Member ID</p>
+            <p className="text-sm font-mono font-bold mt-0.5">{card.memberCode || card.member_code}</p>
           </div>
         </div>
 
-        {/* Summary row */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <div className="inline-flex items-center gap-3">
-            <span className="inline-flex items-center px-3 py-2 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/25 font-mono text-sm">
-              {current}/12
-            </span>
-            <div className="text-sm text-[#f5e6c8]/80">
-              {current >= 12 ? "Reward unlocked!" : "stamps to your next treat."}
-            </div>
-          </div>
+        {/* Holder info */}
+        <div className="relative z-10 mb-4 space-y-1">
+          <p className="text-[11px] text-[#f5e6c8]/70">Card Holder</p>
+          <p className="text-lg font-semibold">{card.name}</p>
 
-          <div className="text-xs px-3 py-2 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[11px] text-[#f5e6c8]/70">Phone:</span>
+            <span className="font-mono">{showPhone ? card.phone : maskedPhone}</span>
+            <button
+              onClick={() => setShowPhone((v) => !v)}
+              className="ml-2 px-2 py-0.5 rounded-full text-[11px] border border-[#f5e6c8]/40 hover:bg-[#f5e6c8]/10"
+            >
+              {showPhone ? "HIDE" : "SHOW"}
+            </button>
+          </div>
+        </div>
+
+        {/* Progress */}
+        <div className="relative z-10 mb-4 flex items-center justify-between text-[11px]">
+          <div className="flex items-baseline gap-1">
+            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/25 font-mono text-[11px]">
+              {currentStamps}/12
+            </span>
+            <span className="text-[#f5e6c8]/80">
+              {rewardUnlocked ? "Reward unlocked! 🎉" : "stamps to your next treat."}
+            </span>
+          </div>
+          <div className="text-[10px] px-2 py-1 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30">
             PAY ₹500+ = 1 STAMP
           </div>
         </div>
 
-        {/* Stamp board area */}
-        <div className="bg-[#3d0f0b]/60 rounded-xl p-4 border border-[#f5e6c8]/10 mb-6">
+        {/* Stamp board */}
+        <div className="relative z-10 mb-4 rounded-3xl bg-[#3d0f0b]/70 border border-[#f5e6c8]/10 p-4">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-sm text-[#f5e6c8]/80">
-              Collect <span className="font-semibold">12 stamps</span> to unlock a CakeRoven treat 🎁
+            <div className="text-[11px] text-[#f5e6c8]/80">
+              <p>
+                Collect <span className="font-semibold">12 stamps</span> to unlock a special CakeRoven treat 🎁
+              </p>
             </div>
-
-            {card.reward_issued_at || card.rewardIssuedAt ? (
-              <div className="text-xs bg-[#f5e6c8]/10 px-3 py-1 rounded-full border border-[#f5e6c8]/20">
-                Reward issued:{" "}
-                <span className="font-semibold text-[#f5e6c8]">
-                  {new Date(card.reward_issued_at || card.rewardIssuedAt).toLocaleDateString()}
-                </span>
-              </div>
-            ) : null}
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f5e6c8]/10 border border-[#f5e6c8]/30">BOARD</span>
           </div>
 
           <div className="grid grid-cols-4 gap-3">
-            {history.map((d, i) => {
-              const n = i + 1;
-              const filled = Boolean(d);
+            {Array.from({ length: 12 }).map((_, i) => {
+              const num = i + 1;
+              const filled = currentStamps >= num;
               return (
-                <div key={n} className="flex items-center gap-3">
-                  <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-semibold transition-shadow ${
-                      filled
-                        ? "bg-[#f5e6c8] text-[#501914] shadow-md"
-                        : "bg-transparent border border-[#f5e6c8]/30 text-[#f5e6c8]/80"
-                    }`}
-                    title={filled ? new Date(d).toLocaleString() : "Not stamped"}
-                  >
-                    {n}
-                  </div>
-                  <div className="text-xs text-[#f5e6c8]/70">
-                    {filled ? new Date(d).toLocaleDateString() : "—"}
-                  </div>
+                <div
+                  key={num}
+                  className={`w-10 h-10 rounded-full border flex items-center justify-center text-sm font-semibold ${filled ? "bg-[#f5e6c8] text-[#501914] border-transparent shadow-[0_0_12px_rgba(0,0,0,0.4)]" : "border-[#f5e6c8]/35 text-[#f5e6c8]/80"}`}
+                >
+                  {num}
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Rules / footer */}
-        <div className="text-xs text-[#f5e6c8]/80">
+        {/* Footer */}
+        <div className="relative z-10 text-[10px] text-[#f5e6c8]/75 space-y-1">
           <p>
-            Show this card at the counter after each visit. Every bill of{" "}
-            <span className="font-semibold">₹500 or more</span> earns <span className="font-semibold">1 stamp</span>.
+            Show this card at the counter after each visit. Every bill of <span className="font-semibold">₹500 or more</span> earns <span className="font-semibold">1 stamp</span>.
           </p>
-          <p className="mt-1">After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat.</p>
+          <p>After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat.</p>
         </div>
       </div>
     </div>
