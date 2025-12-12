@@ -334,7 +334,6 @@ async function removeStamp(req, res) {
     client.release();
   }
 }
-
 module.exports = {
   login,
   getCustomers,
