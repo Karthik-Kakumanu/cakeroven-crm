@@ -4,19 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
 
 /**
- * AdminDashboard.jsx - Revised per user requests
+ * AdminDashboard.jsx - Revised per user requests & build fix
  * - Desktop-first full-screen admin dashboard
  * - Tabs: Dashboard / Insights
  * - Removed Refresh button from header (kept as Quick Action only)
- * - Removed Export/Copy buttons from customers header (they live in Quick Actions)
  * - Stamps are shown in a single horizontal line (12 items) per customer (compact)
  * - Small stamp buttons (clickable) and compact table rows
- * - Only one Export CSV button (in Quick Actions)
- * - Better error feedback when API returns failure (alerts + console)
  * - Auto-polling for fresh data (every 20s)
+ * - Single declaration of helper functions (build fix)
  *
  * Note: Backend must support /api/admin/add-stamp and /api/admin/remove-stamp.
- * If they return 500 you will see an alert — backend needs fixing for those endpoints.
  */
 
 export default function AdminDashboard() {
@@ -303,6 +300,7 @@ export default function AdminDashboard() {
     return sess?.stamp_history?.[index] || null;
   };
 
+  // get reward history helper
   const getRewardHistoryFor = (memberCode) => {
     const customer = customers.find((c) => c.member_code === memberCode);
     if (!customer) return [];
@@ -649,14 +647,4 @@ export default function AdminDashboard() {
       )}
     </div>
   );
-
-  // helper inside component to get reward history (defined last to use local functions)
-  function getRewardHistoryFor(memberCode) {
-    const customer = customers.find((c) => c.member_code === memberCode);
-    if (!customer) return [];
-    if (Array.isArray(customer.reward_history)) return customer.reward_history;
-    if (customer.reward_history && typeof customer.reward_history === "object") return Object.values(customer.reward_history);
-    const sess = sessionHistoryRef.current[memberCode];
-    return sess?.reward_history || [];
-  }
 }
