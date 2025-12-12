@@ -4,29 +4,25 @@ const { Pool } = require("pg");
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   console.error("ERROR: DATABASE_URL is not set in environment");
-  // still export a pool to fail loudly on startup
 }
 
 const pool = new Pool({
   connectionString,
-  // optional: adjust SSL for cloud providers
-  // ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  // If your provider requires SSL and self-signed certs enable:
+  // ssl: { rejectUnauthorized: false },
 });
 
 pool.on("error", (err) => {
   console.error("Unexpected idle client error", err);
 });
 
-/**
- * Simple query wrapper
- */
 async function query(text, params) {
   return pool.query(text, params);
 }
 
 /**
- * Run a function with a client inside a transaction.
- * fn must be async and receive a client.
+ * withClient: run a function with a client inside a transaction
+ * fn receives a node-postgres client and should be async
  */
 async function withClient(fn) {
   const client = await pool.connect();
