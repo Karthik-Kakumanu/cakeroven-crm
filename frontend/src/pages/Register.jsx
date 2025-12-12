@@ -140,7 +140,7 @@ export default function Register() {
         <p className="relative z-10 mt-4 text-[11px] text-center text-[#f5e6c8]/85">
           Already a CakeRoven member?{" "}
           <Link
-            to="/existing-user"
+            to="/existing"
             className="underline font-semibold hover:text-[#ffd8b5]"
           >
             Existing user?
