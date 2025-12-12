@@ -12,9 +12,11 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: "username and password required" });
+    if (!username || !password)
+      return res.status(400).json({ message: "username and password required" });
 
-    const q = "SELECT id, username, password_hash, role FROM admin_users WHERE username = $1 LIMIT 1";
+    const q =
+      "SELECT id, username, password_hash, role FROM admin_users WHERE username = $1 LIMIT 1";
     const r = await db.query(q, [username]);
     if (!r.rows.length) return res.status(401).json({ message: "Invalid credentials" });
 
@@ -22,7 +24,11 @@ exports.login = async (req, res) => {
     const ok = await bcrypt.compare(password, admin.password_hash);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
 
-    const token = jwt.sign({ uid: admin.id, username: admin.username, role: admin.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const token = jwt.sign(
+      { uid: admin.id, username: admin.username, role: admin.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
 
     return res.json({ message: "Login successful", token, username: admin.username });
   } catch (err) {
@@ -54,6 +60,16 @@ exports.getCustomers = async (req, res) => {
 };
 
 /**
+ * Helper: get user by memberCode and lock user row
+ */
+async function lockUserByMemberCode(client, memberCode) {
+  const uQ = `SELECT id, member_code, name, phone, dob FROM users WHERE member_code = $1 FOR UPDATE`;
+  const uR = await client.query(uQ, [memberCode]);
+  if (!uR.rows.length) return null;
+  return uR.rows[0];
+}
+
+/**
  * POST /api/admin/add-stamp
  * body: { memberCode }
  */
@@ -63,48 +79,69 @@ exports.addStamp = async (req, res) => {
     if (!memberCode) return res.status(400).json({ message: "memberCode required" });
 
     const result = await db.withClient(async (client) => {
-      const userQ = `SELECT u.id, u.member_code, u.name, u.phone, l.current_stamps, l.total_rewards
-                     FROM users u
-                     LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-                     WHERE u.member_code = $1
-                     FOR UPDATE`;
-      const ur = await client.query(userQ, [memberCode]);
-      if (!ur.rows.length) throw { status: 404, message: "Member not found" };
-      const row = ur.rows[0];
+      // lock user row
+      const user = await lockUserByMemberCode(client, memberCode);
+      if (!user) throw { status: 404, message: "Member not found" };
 
-      // Ensure loyalty row exists
-      if (row.current_stamps === null || row.current_stamps === undefined) {
-        await client.query(`INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards, updated_at) VALUES ($1,0,0,NOW())`, [row.id]);
-        row.current_stamps = 0;
-        row.total_rewards = 0;
+      // get loyalty account row and lock if exists
+      const laRes = await client.query(
+        `SELECT user_id, current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE`,
+        [user.id]
+      );
+
+      let current = 0;
+      let rewards = 0;
+
+      if (laRes.rows.length === 0) {
+        // create loyalty row
+        await client.query(
+          `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards, updated_at)
+           VALUES ($1, 0, 0, NOW())`,
+          [user.id]
+        );
+        current = 0;
+        rewards = 0;
+      } else {
+        current = Number(laRes.rows[0].current_stamps || 0);
+        rewards = Number(laRes.rows[0].total_rewards || 0);
       }
 
-      let newStamps = Number(row.current_stamps) + 1;
-      let newRewards = Number(row.total_rewards || 0);
+      // add one stamp
+      current += 1;
       let awarded = false;
-
-      if (newStamps >= 12) {
-        newStamps = 0;
-        newRewards += 1;
+      if (current >= 12) {
+        // award
+        current = 0;
+        rewards += 1;
         awarded = true;
       }
 
+      // update loyalty_accounts
       await client.query(
         `UPDATE loyalty_accounts SET current_stamps = $1, total_rewards = $2, updated_at = NOW() WHERE user_id = $3`,
-        [newStamps, newRewards, row.id]
+        [current, rewards, user.id]
       );
 
+      // if awarded insert reward row
       if (awarded) {
-        await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [row.id]);
+        await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [user.id]);
       }
+
+      // insert stamp event for audit (store stamp number that was set after click)
+      // store as 12 when current is 0 (means it was the 12th before reset)
+      const recordedStampNumber = current === 0 ? 12 : current;
+      await client.query(
+        `INSERT INTO stamp_events (user_id, stamp_number, stamped_at) VALUES ($1, $2, NOW())`,
+        [user.id, recordedStampNumber]
+      );
 
       return {
         card: {
-          memberCode: row.member_code,
-          name: row.name,
-          phone: row.phone,
-          currentStamps: newStamps,
-          totalRewards: newRewards,
+          memberCode: user.member_code,
+          name: user.name,
+          phone: user.phone,
+          currentStamps: current,
+          totalRewards: rewards,
         },
         awarded,
       };
@@ -128,35 +165,59 @@ exports.removeStamp = async (req, res) => {
     if (!memberCode) return res.status(400).json({ message: "memberCode required" });
 
     const result = await db.withClient(async (client) => {
-      const userQ = `SELECT u.id, u.member_code, u.name, u.phone, l.current_stamps, l.total_rewards
-                     FROM users u
-                     LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-                     WHERE u.member_code = $1
-                     FOR UPDATE`;
-      const ur = await client.query(userQ, [memberCode]);
-      if (!ur.rows.length) throw { status: 404, message: "Member not found" };
-      const row = ur.rows[0];
+      const user = await lockUserByMemberCode(client, memberCode);
+      if (!user) throw { status: 404, message: "Member not found" };
 
-      let current = Number(row.current_stamps || 0);
-      let rewards = Number(row.total_rewards || 0);
+      const laRes = await client.query(
+        `SELECT user_id, current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE`,
+        [user.id]
+      );
+
+      let current = 0;
+      let rewards = 0;
+      if (laRes.rows.length === 0) {
+        // nothing to remove
+        return {
+          card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: 0, totalRewards: 0 },
+        };
+      } else {
+        current = Number(laRes.rows[0].current_stamps || 0);
+        rewards = Number(laRes.rows[0].total_rewards || 0);
+      }
 
       if (current > 0) {
         current -= 1;
       } else if (rewards > 0) {
+        // roll back a reward into stamps: remove latest reward row
         rewards -= 1;
         current = 11;
+        // delete the most recent reward row for the user
         await client.query(
-          `DELETE FROM rewards WHERE user_id = $1 AND issued_at = (SELECT MAX(issued_at) FROM rewards WHERE user_id = $1)`,
-          [row.id]
+          `DELETE FROM rewards WHERE id = (
+             SELECT id FROM rewards WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1
+           )`,
+          [user.id]
         );
       } else {
-        return { card: { memberCode: row.member_code, name: row.name, phone: row.phone, currentStamps: current, totalRewards: rewards } };
+        // nothing to remove
+        return {
+          card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: current, totalRewards: rewards },
+        };
       }
 
-      await client.query(`UPDATE loyalty_accounts SET current_stamps = $1, total_rewards = $2, updated_at = NOW() WHERE user_id = $3`, [current, rewards, row.id]);
+      await client.query(
+        `UPDATE loyalty_accounts SET current_stamps = $1, total_rewards = $2, updated_at = NOW() WHERE user_id = $3`,
+        [current, rewards, user.id]
+      );
+
+      // record a stamp undo event (we use negative stamp_number to mark undo)
+      await client.query(
+        `INSERT INTO stamp_events (user_id, stamp_number, stamped_at, note) VALUES ($1, $2, NOW(), $3)`,
+        [user.id, current, "undo"]
+      );
 
       return {
-        card: { memberCode: row.member_code, name: row.name, phone: row.phone, currentStamps: current, totalRewards: rewards },
+        card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: current, totalRewards: rewards },
       };
     });
 
@@ -176,7 +237,11 @@ exports.getRewardHistoryFor = async (req, res) => {
     const { memberCode } = req.params;
     if (!memberCode) return res.status(400).json({ message: "memberCode required" });
 
-    const q = `SELECT r.id, r.issued_at, u.member_code, u.name, u.phone FROM rewards r JOIN users u ON u.id = r.user_id WHERE u.member_code = $1 ORDER BY r.issued_at ASC`;
+    const q = `SELECT r.id, r.issued_at, u.member_code, u.name, u.phone
+               FROM rewards r
+               JOIN users u ON u.id = r.user_id
+               WHERE u.member_code = $1
+               ORDER BY r.issued_at ASC`;
     const r = await db.query(q, [memberCode]);
     return res.json({ rewards: r.rows });
   } catch (err) {

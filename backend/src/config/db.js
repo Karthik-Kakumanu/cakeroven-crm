@@ -21,8 +21,8 @@ async function query(text, params) {
 }
 
 /**
- * withClient: run a function with a client inside a transaction
- * fn receives a node-postgres client and should be async
+ * withClient: run fn(client) inside a transaction. fn must be async.
+ * Ensures BEGIN / COMMIT / ROLLBACK and always releases client.
  */
 async function withClient(fn) {
   const client = await pool.connect();
