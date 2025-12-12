@@ -121,9 +121,9 @@ export default function Card() {
     card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
 
   // Logo src fallbacks (public)
-  const publicSrc = (process.env.PUBLIC_URL || "") + "/cakeroven-logo.png";
+  const publicSrc = (process.env.PUBLIC_URL || "") + "cakeroven-logo.png";
   const originSrc =
-    typeof window !== "undefined" ? window.location.origin + "/cakeroven-logo.png" : publicSrc;
+    typeof window !== "undefined" ? window.location.origin + "cakeroven-logo.png" : publicSrc;
   const logoSrc = publicSrc || originSrc;
 
   // ---------- Motion variants ----------
