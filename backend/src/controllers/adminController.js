@@ -6,9 +6,6 @@ const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET || "please-set-a-secure-secret";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
-/**
- * POST /api/admin/login
- */
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -37,9 +34,6 @@ exports.login = async (req, res) => {
   }
 };
 
-/**
- * GET /api/admin/customers
- */
 exports.getCustomers = async (req, res) => {
   try {
     const q = `
@@ -59,9 +53,6 @@ exports.getCustomers = async (req, res) => {
   }
 };
 
-/**
- * Helper: get user by memberCode and lock user row
- */
 async function lockUserByMemberCode(client, memberCode) {
   const uQ = `SELECT id, member_code, name, phone, dob FROM users WHERE member_code = $1 FOR UPDATE`;
   const uR = await client.query(uQ, [memberCode]);
@@ -69,21 +60,17 @@ async function lockUserByMemberCode(client, memberCode) {
   return uR.rows[0];
 }
 
-/**
- * POST /api/admin/add-stamp
- * body: { memberCode }
- */
 exports.addStamp = async (req, res) => {
   try {
     const { memberCode } = req.body;
     if (!memberCode) return res.status(400).json({ message: "memberCode required" });
 
     const result = await db.withClient(async (client) => {
-      // lock user row
+      // 1) lock user row
       const user = await lockUserByMemberCode(client, memberCode);
       if (!user) throw { status: 404, message: "Member not found" };
 
-      // get loyalty account row and lock if exists
+      // 2) lock loyalty account row (if exists)
       const laRes = await client.query(
         `SELECT user_id, current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE`,
         [user.id]
@@ -127,12 +114,12 @@ exports.addStamp = async (req, res) => {
         await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [user.id]);
       }
 
-      // insert stamp event for audit (store stamp number that was set after click)
-      // store as 12 when current is 0 (means it was the 12th before reset)
-      const recordedStampNumber = current === 0 ? 12 : current;
+      // record into stamps_history (use existing DB table name & columns)
+      // recordedStampIndex: if current === 0 it means the member hit the 12th before reset -> record 12
+      const recordedStampIndex = current === 0 ? 12 : current;
       await client.query(
-        `INSERT INTO stamp_history (user_id, stamp_number, stamped_at) VALUES ($1, $2, NOW())`,
-        [user.id, recordedStampNumber]
+        `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
+        [user.id, recordedStampIndex]
       );
 
       return {
@@ -155,10 +142,6 @@ exports.addStamp = async (req, res) => {
   }
 };
 
-/**
- * POST /api/admin/remove-stamp
- * body: { memberCode }
- */
 exports.removeStamp = async (req, res) => {
   try {
     const { memberCode } = req.body;
@@ -210,10 +193,10 @@ exports.removeStamp = async (req, res) => {
         [current, rewards, user.id]
       );
 
-      // record a stamp undo event (we use negative stamp_number to mark undo)
+      // record an undo event in stamps_history (we store the resulting stamp_index after removal)
       await client.query(
-        `INSERT INTO stamp_events (user_id, stamp_number, stamped_at, note) VALUES ($1, $2, NOW(), $3)`,
-        [user.id, current, "undo"]
+        `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
+        [user.id, current]
       );
 
       return {
@@ -229,9 +212,6 @@ exports.removeStamp = async (req, res) => {
   }
 };
 
-/**
- * GET /api/admin/rewards/:memberCode
- */
 exports.getRewardHistoryFor = async (req, res) => {
   try {
     const { memberCode } = req.params;
