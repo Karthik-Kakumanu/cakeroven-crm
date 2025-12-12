@@ -229,3 +229,57 @@ exports.getRewardHistoryFor = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+/**
+ * NEW - getInsights
+ * Returns:
+ *  - stamps_over_time: last 14 days (date, stamps)
+ *  - rewards_per_month: last 6 months (month, rewards)
+ */
+exports.getInsights = async (req, res) => {
+  try {
+    // 1) stamps over time: last 14 days (include zeros)
+    const stampsQ = `
+      SELECT to_char(day::date, 'YYYY-MM-DD') as date,
+             COALESCE(sum(cnt),0)::int as stamps
+      FROM (
+        SELECT (created_at::date) as day, count(*) as cnt
+        FROM stamps_history
+        WHERE created_at >= (current_date - INTERVAL '13 days')
+        GROUP BY day
+      ) t
+      RIGHT JOIN (
+        SELECT generate_series((current_date - INTERVAL '13 days')::date, current_date::date, '1 day') AS day
+      ) g USING (day)
+      GROUP BY day
+      ORDER BY day;
+    `;
+
+    // 2) rewards per month: last 6 months
+    const rewardsQ = `
+      SELECT to_char(month, 'Mon YYYY') AS month,
+             COALESCE(counts,0)::int AS rewards
+      FROM (
+        SELECT date_trunc('month', (current_date - (interval '5 months'))) + (n || ' months')::interval AS month
+        FROM generate_series(0,5) n
+      ) months
+      LEFT JOIN (
+        SELECT date_trunc('month', issued_at) as m, count(*) as counts
+        FROM rewards
+        WHERE issued_at >= (date_trunc('month', current_date) - INTERVAL '5 months')
+        GROUP BY m
+      ) r ON months.month = r.m
+      ORDER BY months.month;
+    `;
+
+    const [stampsRes, rewardsRes] = await Promise.all([db.query(stampsQ), db.query(rewardsQ)]);
+
+    const stampsOverTime = stampsRes.rows.map((r) => ({ date: r.date, stamps: Number(r.stamps) }));
+    const rewardsPerMonth = rewardsRes.rows.map((r) => ({ month: r.month, rewards: Number(r.rewards) }));
+
+    return res.json({ stamps_over_time: stampsOverTime, rewards_per_month: rewardsPerMonth });
+  } catch (err) {
+    console.error("getInsights error:", err);
+    return res.status(500).json({ message: "Server error fetching insights", error: err.message });
+  }
+};

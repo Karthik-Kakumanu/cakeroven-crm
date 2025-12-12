@@ -142,12 +142,40 @@ export default function AdminDashboard() {
     [token, navigate]
   );
 
+  // New: fetchInsights
+  const fetchInsights = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/insights`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        console.error("insights fetch failed", res.status);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setInsightsData({
+        stampsOverTime: data.stamps_over_time || [],
+        rewardsPerMonth: data.rewards_per_month || [],
+      });
+    } catch (err) {
+      console.error("fetchInsights error:", err);
+    }
+  }, [token]);
+
   // Polling
   useEffect(() => {
     fetchCustomers();
     pollRef.current = setInterval(() => fetchCustomers({ silence: true }), POLL_INTERVAL);
     return () => clearInterval(pollRef.current);
   }, [fetchCustomers]);
+
+  // fetch insights when active tab is insights
+  useEffect(() => {
+    if (activeTab === "insights") {
+      fetchInsights();
+    }
+  }, [activeTab, fetchInsights]);
 
   // Logout
   const handleLogout = () => {
@@ -309,7 +337,7 @@ export default function AdminDashboard() {
     return () => clearTimeout(t);
   }, [celebration]);
 
-  // Generate minimal insights if backend didn't provide data
+  // Generate minimal insights if backend didn't provide data (fallback)
   useEffect(() => {
     if ((insightsData.stampsOverTime || []).length === 0) {
       // build a small synthetic sample using customers and session history
@@ -618,7 +646,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-[#6b3a35]/70">Quick charts & KPIs — stamps & rewards</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => fetchCustomers({ silence: false })} className="px-3 py-2 rounded-full bg-white border">
+                      <button onClick={() => { fetchCustomers({ silence: false }); fetchInsights(); }} className="px-3 py-2 rounded-full bg-white border">
                         Refresh
                       </button>
                     </div>
@@ -745,7 +773,7 @@ export default function AdminDashboard() {
             <motion.div {...fadeInUp} className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
               <p className="text-sm font-semibold text-[#3b1512] mb-2">Quick actions</p>
               <div className="flex flex-col gap-2">
-                <button onClick={() => fetchCustomers({ silence: false })} className="w-full px-3 py-2 rounded-lg bg-white border border-[#ecd9b4] text-sm hover:bg-[#fff9ee]">
+                <button onClick={() => { fetchCustomers({ silence: false }); if (activeTab === 'insights') fetchInsights(); }} className="w-full px-3 py-2 rounded-lg bg-white border border-[#ecd9b4] text-sm hover:bg-[#fff9ee]">
                   Refresh data now
                 </button>
                 <button onClick={() => exportCSV(customers)} className="w-full px-3 py-2 rounded-lg bg-[#501914] text-white text-sm hover:bg-[#40100f]">

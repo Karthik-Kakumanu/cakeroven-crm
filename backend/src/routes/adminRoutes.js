@@ -12,4 +12,7 @@ router.post("/add-stamp", adminAuth, adminController.addStamp);
 router.post("/remove-stamp", adminAuth, adminController.removeStamp);
 router.get("/rewards/:memberCode", adminAuth, adminController.getRewardHistoryFor);
 
+// NEW: insights endpoint
+router.get("/insights", adminAuth, adminController.getInsights);
+
 module.exports = router;
