@@ -1,131 +1,148 @@
-// AdminLogin.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-
-  const [role, setRole] = useState("owner");
-  const [username, setUsername] = useState("");
+  const [role] = useState("owner"); // single role for now
+  const [username, setUsername] = useState("cakeroven-owner");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const [showPwd, setShowPwd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // If already logged in, go to dashboard
-  if (typeof window !== "undefined" && localStorage.getItem("cr_adminToken")) {
-    // avoid rendering login if token exists — redirect immediately
-    navigate("/admin-dashboard", { replace: true });
-  }
-
-  async function handleSubmit(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
+    setError("");
+    setLoading(true);
 
-    if (!username || !password) {
-      setError("Please enter username and password.");
-      return;
-    }
-
-    setBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/admin/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await res.json().catch(() => null);
+      const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.message || "Login failed. Please check credentials.");
-        setBusy(false);
+        setError(data.message || "Invalid credentials");
+        setLoading(false);
         return;
       }
 
-      // store token & username
       localStorage.setItem("cr_adminToken", data.token);
-      localStorage.setItem("cr_adminUsername", data.username || username);
+      localStorage.setItem("cr_adminUsername", data.username);
+      localStorage.setItem("cr_adminRole", data.role);
 
-      // go to dashboard
-      navigate("/admin-dashboard", { replace: true });
+      navigate("/admin-dashboard");
     } catch (err) {
-      console.error("Login error:", err);
+      console.error(err);
       setError("Server error. Please try again.");
-      setBusy(false);
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f5e6c8] p-6">
-      <div className="w-full max-w-md bg-[#501914] rounded-3xl p-8 shadow-xl text-[#f5e6c8]">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
-            <img src="/cakeroven-logo.png" alt="logo" className="w-10 h-10 object-cover rounded-full" />
+    <div className="flex min-h-screen items-center justify-center bg-[#f5e6c8] px-4 py-10">
+      <motion.div
+        initial={{ opacity: 0, y: 30, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="w-full max-w-md rounded-[2.5rem] bg-[#501914] px-7 py-8 text-[#f5e6c8] shadow-[0_45px_90px_rgba(0,0,0,0.7)]"
+      >
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f5e6c8] shadow-[0_0_18px_rgba(0,0,0,0.35)]">
+            <div className="h-10 w-10 overflow-hidden rounded-full">
+              <img
+                src="/cakeroven-logo.png"
+                alt="CakeRoven"
+                className="h-full w-full object-cover"
+              />
+            </div>
           </div>
           <div>
-            <p className="text-sm text-[#f5e6c8]/80">CakeRoven Admin</p>
-            <h1 className="text-lg font-semibold">Sign in to admin console</h1>
+            <h1 className="text-lg font-bold leading-tight">
+              CakeRoven Admin
+            </h1>
+            <p className="text-[11px] text-[#f5e6c8]/80">
+              Owner control panel • Desktop access
+            </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs text-[#f5e6c8]/80 mb-1">Role</label>
+        <h2 className="mb-4 text-xl font-semibold">Sign in to admin console</h2>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+          {/* role */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase tracking-wide text-[#f5e6c8]/70">
+              Role
+            </label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full px-4 py-2 rounded-xl bg-[#f5e6c8] text-[#501914] outline-none"
+              disabled
+              className="w-full cursor-not-allowed rounded-2xl border border-[#f5e6c8]/30 bg-[#f5e6c8] px-4 py-3 text-sm text-[#501914] outline-none"
             >
               <option value="owner">Owner</option>
-              <option value="manager">Manager</option>
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs text-[#f5e6c8]/80 mb-1">Username</label>
+          {/* username */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase tracking-wide text-[#f5e6c8]/70">
+              Username
+            </label>
             <input
+              type="text"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 rounded-xl bg-[#f5e6c8] text-[#501914] outline-none"
-              placeholder="admin username"
               autoComplete="username"
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full rounded-2xl border border-[#f5e6c8]/30 bg-[#f5e6c8] px-4 py-3 text-sm text-[#501914] outline-none transition focus:border-[#f5e6c8] focus:ring-2 focus:ring-[#f5e6c8]/60"
             />
           </div>
 
-          <div>
-            <label className="block text-xs text-[#f5e6c8]/80 mb-1">Password</label>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              className="w-full px-4 py-2 rounded-xl bg-[#f5e6c8] text-[#501914] outline-none"
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
+          {/* password */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase tracking-wide text-[#f5e6c8]/70">
+              Password
+            </label>
+            <div className="flex items-center rounded-2xl border border-[#f5e6c8]/30 bg-[#f5e6c8] pr-2 text-[#501914] focus-within:ring-2 focus-within:ring-[#f5e6c8]/60">
+              <input
+                type={showPwd ? "text" : "password"}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-2xl bg-transparent px-4 py-3 text-sm outline-none"
+                placeholder="Owner password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd((v) => !v)}
+                className="text-xs font-semibold text-[#501914]/80"
+              >
+                {showPwd ? "Hide" : "Show"}
+              </button>
+            </div>
           </div>
 
           {error && (
-            <div className="text-xs text-red-200 bg-red-900/30 px-3 py-2 rounded-md">
+            <div className="rounded-2xl bg-red-500/15 px-3 py-2 text-xs text-red-100">
               {error}
             </div>
           )}
 
           <button
             type="submit"
-            disabled={busy}
-            className={`w-full py-3 rounded-xl font-semibold text-[#501914] bg-[#f5e6c8] shadow-md ${
-              busy ? "opacity-60" : "hover:scale-[1.01]"
-            } transition`}
+            disabled={loading}
+            className="mt-2 flex w-full items-center justify-center rounded-2xl bg-[#f5e6c8] px-4 py-3 text-sm font-semibold text-[#501914] shadow-[0_10px_30px_rgba(0,0,0,0.6)] transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-80"
           >
-            {busy ? "Signing in…" : `Login as ${role[0].toUpperCase() + role.slice(1)}`}
+            {loading ? "Logging in…" : "Login as Owner"}
           </button>
         </form>
-
-        <p className="mt-4 text-center text-xs text-[#f5e6c8]/70">
-          Only authorized admins may log in. Keep credentials secure.
-        </p>
-      </div>
+      </motion.div>
     </div>
   );
 }
