@@ -5,22 +5,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Mobile-first Card.jsx
- * - Mobile-first (phone) layout & UX, but also looks good on tablet/desktop
- * - Animated background logo shown ONLY on mobile (hidden on md+)
- * - Robust logo fallback + onError hide so 404 won't break UI
- * - Smooth Framer Motion micro-interactions
- * - All hooks run at top-level (no conditional hooks)
+ * Mobile-optimized Card.jsx
+ * - Smaller, compact card on mobile (max-w-sm). Desktop uses max-w-xl.
+ * - Stamp grid uses 4 columns on mobile (4-per-line).
+ * - Fixed logo path (expects public/cakeroven-logo.png). Hidden gracefully on error.
+ * - Framer Motion micro-animations.
+ * - All hooks at top-level (no conditional hooks).
  *
- * Requirements:
- * - cakeroven-logo.png in public/
- * - framer-motion installed
+ * Place cakeroven-logo.png inside frontend/public/
+ * Install framer-motion: npm i framer-motion
  */
 
 export default function Card() {
   const navigate = useNavigate();
 
-  // ---------- Hooks (always at top level) ----------
+  // ---------- Hooks ----------
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -36,7 +35,7 @@ export default function Card() {
     };
   }, []);
 
-  // Remove stray query param on mount (safe)
+  // Remove stray query param (safe)
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && window.location?.search) {
@@ -51,7 +50,7 @@ export default function Card() {
     }
   }, []);
 
-  // Fetch card (safe, AbortController)
+  // Fetch card (AbortController)
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
@@ -77,7 +76,7 @@ export default function Card() {
           const message = d.message || "Unable to load card. Please sign in again.";
           setError(message);
           setLoading(false);
-          // Clear local session so user can re-login
+          // clear session so user can re-login
           localStorage.removeItem("cr_memberCode");
           localStorage.removeItem("cr_phone");
           return;
@@ -102,7 +101,7 @@ export default function Card() {
     return () => controller.abort();
   }, [navigate]);
 
-  // Celebrate when card is full
+  // Celebrate when full
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
   const isRewardReady = stamps >= 12;
@@ -115,16 +114,13 @@ export default function Card() {
     }
   }, [isRewardReady]);
 
-  // Derived / fallback values
+  // Derived values
   const memberCode = card?.memberCode || card?.member_code || "—";
   const maskedPhone =
     card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
 
-  // Logo src fallbacks (public)
-  const publicSrc = (process.env.PUBLIC_URL || "") + "cakeroven-logo.png";
-  const originSrc =
-    typeof window !== "undefined" ? window.location.origin + "cakeroven-logo.png" : publicSrc;
-  const logoSrc = publicSrc || originSrc;
+  // Logo path (fixed): ensure leading slash
+  const logoSrc = `${process.env.PUBLIC_URL || ""}/cakeroven-logo.png`;
 
   // ---------- Motion variants ----------
   const page = {
@@ -134,7 +130,7 @@ export default function Card() {
 
   const stampVariants = {
     hidden: { scale: 0.92, opacity: 0 },
-    show: (i) => ({ scale: 1, opacity: 1, transition: { delay: i * 0.03, duration: 0.26 } }),
+    show: (i) => ({ scale: 1, opacity: 1, transition: { delay: i * 0.02, duration: 0.24 } }),
     filledPulse: { scale: [1, 1.06, 1], transition: { duration: 0.42 } },
   };
 
@@ -147,19 +143,22 @@ export default function Card() {
 
   const handleLogoError = () => setLogoVisible(false);
 
-  // ---------- Render decisions ----------
+  // ---------- Render states ----------
   if (loading) {
     return (
       <main className="min-h-screen bg-amber-50 flex items-start justify-center py-8 px-4">
-        <div className="w-full max-w-md animate-fade-in p-6 rounded-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] shadow-xl text-amber-100">
-          <div className="h-4 w-36 rounded-full bg-amber-100/20 mb-4" />
-          <div className="h-5 w-52 rounded-full bg-amber-100/10 mb-6" />
-          <div className="grid grid-cols-4 gap-3">
+        <div className="w-full max-w-sm animate-fade-in p-5 rounded-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] shadow-xl text-amber-100">
+          <div className="h-3 w-32 rounded-full bg-amber-100/20 mb-3" />
+          <div className="h-4 w-44 rounded-full bg-amber-100/12 mb-5" />
+          <div className="grid grid-cols-4 gap-2">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="h-10 w-10 rounded-full border border-amber-100/12 bg-black/5 animate-pulse" />
+              <div
+                key={i}
+                className="h-9 w-9 rounded-full border border-amber-100/12 bg-black/5 animate-pulse"
+              />
             ))}
           </div>
-          <p className="mt-5 text-sm text-amber-100/70">Loading your digital stamp card…</p>
+          <p className="mt-4 text-xs text-amber-100/70">Loading your card…</p>
         </div>
       </main>
     );
@@ -168,7 +167,7 @@ export default function Card() {
   if (error && !card) {
     return (
       <main className="min-h-screen bg-amber-50 flex items-center justify-center p-6">
-        <div className="w-full max-w-md p-6 rounded-2xl bg-white/5 border border-amber-100/8 shadow-lg text-amber-900">
+        <div className="w-full max-w-sm p-6 rounded-2xl bg-white/5 border border-amber-100/8 shadow-lg text-amber-900">
           <h3 className="text-lg font-semibold mb-2">Could not load card</h3>
           <p className="text-sm mb-4 text-amber-700/90">{error}</p>
           <div className="flex gap-3">
@@ -197,10 +196,10 @@ export default function Card() {
         initial="hidden"
         animate="enter"
         variants={page}
-        className="w-full max-w-md relative"
+        className="w-full max-w-sm md:max-w-xl relative"
         aria-labelledby="stamp-card-heading"
       >
-        {/* MOBILE only animated logo (hidden on md+) */}
+        {/* MOBILE-only animated logo (hidden on md+) */}
         {logoVisible && (
           <motion.img
             src={logoSrc}
@@ -210,81 +209,86 @@ export default function Card() {
             initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: [0.03, 0.08, 0.03], y: [0, 6, 0], rotate: [0, 1.2, 0] }}
             transition={{ duration: 9, repeat: Infinity, repeatType: "mirror" }}
-            className="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 w-[62%] max-w-[380px] opacity-6 mix-blend-overlay transform md:hidden"
+            className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 w-[58%] max-w-[360px] opacity-6 mix-blend-overlay transform md:hidden"
           />
         )}
 
-        {/* card container */}
-        <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-lg text-amber-100 p-5 sm:p-6 md:p-8 overflow-hidden">
-          {/* decorative glows */}
+        {/* Card container (compact on mobile) */}
+        <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-lg text-amber-100 p-4 sm:p-5 md:p-8 overflow-hidden">
+          {/* top glows */}
           <div className="absolute -left-6 -top-10 w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
           <div className="absolute -right-8 bottom-[-30px] w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
 
           {/* Header */}
-          <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
             <div className="min-w-0">
               <p className="text-xs tracking-widest uppercase text-amber-100/65">CAKEROVEN LOYALTY</p>
-              <h1 id="stamp-card-heading" className="text-2xl font-extrabold leading-tight mt-1">
+              <h1 id="stamp-card-heading" className="text-lg sm:text-xl font-extrabold leading-tight mt-1">
                 Digital Stamp Card
               </h1>
             </div>
+
             <div className="text-right">
               <p className="text-xs uppercase text-amber-100/60">Member ID</p>
               <p className="text-sm font-mono font-semibold mt-1">{memberCode}</p>
             </div>
           </div>
 
-          {/* Holder + phone */}
-          <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {/* Holder & phone */}
+          <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="min-w-0">
               <p className="text-xs text-amber-100/70">Card Holder</p>
-              <p className="text-lg font-semibold truncate">{card?.name || "—"}</p>
+              <p className="text-base font-semibold truncate">{card?.name || "—"}</p>
             </div>
 
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-2 text-sm">
               <span className="text-xs text-amber-100/70">Phone:</span>
-              <span className="font-mono">{showPhone ? card?.phone : maskedPhone}</span>
+              <span className="font-mono text-sm">{showPhone ? card?.phone : maskedPhone}</span>
               <button
                 aria-pressed={showPhone}
                 onClick={() => setShowPhone((s) => !s)}
-                className="ml-1 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition"
+                className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition"
               >
                 {showPhone ? "HIDE" : "SHOW"}
               </button>
             </div>
           </div>
 
-          {/* progress + rule */}
-          <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
+          {/* Progress + rule */}
+          <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-center gap-2">
               <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">
                 {stamps}/12
               </span>
-              <p className="text-sm text-amber-100/80">
+              <p className="text-xs text-amber-100/80">
                 {isRewardReady ? "Reward unlocked! Claim below." : "stamps to your next treat."}
               </p>
             </div>
 
-            <div className="text-xs px-3 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">
+            <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">
               PAY ₹1000+ = 1 STAMP
             </div>
           </div>
 
-          {/* stamp board */}
-          <div className="rounded-2xl bg-[#3d0f0b]/60 border border-amber-100/6 p-4 mb-4 relative">
-            <div className="flex items-start justify-between mb-3 gap-3">
+          {/* Stamp Board */}
+          <div className="rounded-2xl bg-[#3d0f0b]/60 border border-amber-100/6 p-3 mb-3 relative">
+            <div className="flex items-start justify-between mb-2 gap-2">
               <div className="text-sm text-amber-100/80">
-                <p>
+                <p className="text-xs">
                   Collect <span className="font-semibold">12 stamps</span> to unlock a special CakeRoven treat 🎁
                 </p>
-                {rewards > 0 && <p className="mt-1 text-amber-200/90">Rewards earned: <span className="font-semibold">{rewards}</span></p>}
+                {rewards > 0 && (
+                  <p className="mt-1 text-amber-200/90 text-xs">
+                    Rewards earned: <span className="font-semibold">{rewards}</span>
+                  </p>
+                )}
               </div>
 
               <span className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20">BOARD</span>
             </div>
 
-            {/* grid: mobile 3 columns, small spacing for compactness */}
-            <div className="grid grid-cols-3 gap-3 justify-center">
+            {/* 4 columns on mobile */}
+            <div className="grid grid-cols-4 gap-2 justify-center">
               <AnimatePresence initial={false}>
                 {Array.from({ length: 12 }).map((_, i) => {
                   const index = i + 1;
@@ -298,38 +302,38 @@ export default function Card() {
                       variants={stampVariants}
                       custom={i}
                       whileTap={{ scale: 0.96 }}
-                      className={`flex items-center justify-center h-12 w-12 rounded-full border transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-200/20 text-sm ${
+                      className={`flex items-center justify-center h-10 w-10 md:h-12 md:w-12 rounded-full border transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-200/20 text-sm ${
                         filled
-                          ? "bg-amber-100 text-[#501914] border-transparent shadow-[0_6px_20px_rgba(0,0,0,0.45)]"
+                          ? "bg-amber-100 text-[#501914] border-transparent shadow-[0_6px_18px_rgba(0,0,0,0.45)]"
                           : "bg-transparent text-amber-100/80 border-amber-100/20 hover:bg-amber-100/6"
                       }`}
                       onClick={() => {
-                        // Keep this click non-hook-creating to avoid hooks issues
-                        // Future: open modal to confirm stamping (server call)
+                        // placeholder for future interactions
                       }}
                     >
-                      <span className="font-semibold pointer-events-none select-none">{index}</span>
+                      <span className="font-semibold pointer-events-none select-none text-xs md:text-sm">{index}</span>
                     </motion.button>
                   );
                 })}
               </AnimatePresence>
             </div>
 
-            {/* subtle inner border */}
+            {/* inner border */}
             <div className="pointer-events-none absolute inset-0 rounded-2xl border border-amber-100/8 m-0.5" />
           </div>
 
-          {/* instructions & actions */}
-          <div className="text-sm text-amber-100/75 space-y-3">
+          {/* Info + actions */}
+          <div className="text-xs text-amber-100/75 space-y-2">
             <p>
-              Show this card at the counter after each visit. Every bill of <span className="font-semibold">₹1000 or more</span> earns <span className="font-semibold">1 stamp</span>.
+              Show this card at the counter after each visit. Every bill of{" "}
+              <span className="font-semibold">₹1000 or more</span> earns <span className="font-semibold">1 stamp</span>.
             </p>
             <p>After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat.</p>
 
-            <div className="flex items-center gap-3 mt-3">
+            <div className="flex items-center gap-2 mt-2">
               <button
                 onClick={handleSwitchUser}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-amber-100/20 text-sm hover:bg-amber-100/6 transition"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-100/20 text-xs hover:bg-amber-100/6 transition"
               >
                 Not you? Switch user
               </button>
@@ -340,7 +344,7 @@ export default function Card() {
                     setCelebrate(true);
                     setTimeout(() => setCelebrate(false), 1200);
                   }}
-                  className="ml-auto inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-100/10 border border-amber-100/30 text-sm"
+                  className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100/10 border border-amber-100/30 text-xs"
                 >
                   🎉 Claim Reward
                 </motion.button>
@@ -349,7 +353,7 @@ export default function Card() {
           </div>
         </div>
 
-        {/* celebrate overlay (subtle burst for mobile) */}
+        {/* celebrate overlay (subtle) */}
         <AnimatePresence>
           {celebrate && (
             <motion.div
@@ -365,7 +369,6 @@ export default function Card() {
                 transition={{ duration: 0.28 }}
                 className="absolute inset-0 rounded-3xl bg-gradient-to-r from-transparent via-amber-100/6 to-transparent"
               />
-              {/* tiny floating dots */}
               <div className="absolute inset-0">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <motion.span
