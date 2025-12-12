@@ -5,29 +5,69 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx
- * - Inline logo left of CAKEROVEN LOYALTY (perfectly aligned)
- * - Card vertically centered on mobile & desktop
- * - Mobile-first compact card, 4 stamps per row
- * - Framer Motion micro-interactions
- * - Robust logo fallback (onError hides logo)
+ * Card.jsx (Holiday-aware + Mobile-first)
  *
- * Place cakeroven-logo.png in public/
- * Install framer-motion: npm i framer-motion
+ * Holiday behavior (IST):
+ * - Christmas: Dec 25 (00:00 → 23:59 IST) every year — show "Happy Christmas" message, hide card/stamps.
+ * - New Year: Dec 31 (00:00 IST) → Jan 1 (23:59 IST) every year — show "Happy New Year" message, hide card/stamps.
+ *
+ * - Public asset: public/cakeroven-logo.png (inline logo in header)
+ * - Framer Motion used for micro-interactions
+ * - Tailwind CSS for styling
  */
+
+function getIstDate(now = new Date()) {
+  // IST is UTC + 5:30 -> +330 minutes
+  const ist = new Date(now.getTime() + 330 * 60 * 1000);
+  return ist;
+}
+
+function getHolidayInfoForIst(dateIst) {
+  // dateIst is a Date already adjusted to IST
+  const month = dateIst.getUTCMonth(); // 0=Jan .. 11=Dec when using UTC methods on IST-adjusted Date
+  const day = dateIst.getUTCDate();
+
+  // Christmas: every year Dec 25
+  if (month === 11 && day === 25) {
+    return {
+      isHoliday: true,
+      key: "christmas",
+      title: "🎄 Happy Christmas",
+      message:
+        "Sorry for the inconvenience on Christmas day. Stamp access is temporarily unavailable. We'll be back shortly — enjoy the celebration!",
+    };
+  }
+
+  // New Year: Dec 31 and Jan 1 (48 hours)
+  // Dec 31 => month 11 day 31
+  // Jan 1 => month 0 day 1
+  if ((month === 11 && day === 31) || (month === 0 && day === 1)) {
+    return {
+      isHoliday: true,
+      key: "newyear",
+      title: "🎉 Happy New Year",
+      message:
+        "We're celebrating the New Year! Stamp access is temporarily unavailable for the New Year period. Wishing you a fantastic year ahead!",
+    };
+  }
+
+  return { isHoliday: false };
+}
 
 export default function Card() {
   const navigate = useNavigate();
 
-  // ---------- Hooks ----------
+  // ---------- Hooks (top-level only) ----------
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showPhone, setShowPhone] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
   const [logoInlineVisible, setLogoInlineVisible] = useState(true);
+  const [holiday, setHoliday] = useState({ isHoliday: false });
   const isMountedRef = useRef(true);
 
+  // Ensure isMountedRef for safe setState when async finishes
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -35,7 +75,20 @@ export default function Card() {
     };
   }, []);
 
-  // remove stray query param (safe)
+  // Check holidays on mount and every minute — using IST
+  useEffect(() => {
+    const checkHoliday = () => {
+      const ist = getIstDate(); // Date adjusted to IST
+      const info = getHolidayInfoForIst(ist);
+      setHoliday(info);
+    };
+
+    checkHoliday();
+    const id = setInterval(checkHoliday, 60 * 1000); // re-check every minute
+    return () => clearInterval(id);
+  }, []);
+
+  // Remove stray "member" query param (safe)
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && window.location?.search) {
@@ -50,7 +103,7 @@ export default function Card() {
     }
   }, []);
 
-  // fetch card
+  // Fetch card (safe — abortable)
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
@@ -76,6 +129,7 @@ export default function Card() {
           const message = d.message || "Unable to load card. Please sign in again.";
           setError(message);
           setLoading(false);
+          // clear session so user can re-login
           localStorage.removeItem("cr_memberCode");
           localStorage.removeItem("cr_phone");
           return;
@@ -100,7 +154,7 @@ export default function Card() {
     return () => controller.abort();
   }, [navigate]);
 
-  // celebrate
+  // Celebrate micro-animation when card full
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
   const isRewardReady = stamps >= 12;
@@ -113,15 +167,14 @@ export default function Card() {
     }
   }, [isRewardReady]);
 
-  // derived
+  // Derived
   const memberCode = card?.memberCode || card?.member_code || "—";
   const maskedPhone =
     card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
 
-  // inline logo path (leading slash ensures public root)
+  // Inline logo path (public root)
   const inlineLogoSrc = `${process.env.PUBLIC_URL || ""}/cakeroven-logo.png`;
 
-  // motion
   const page = {
     hidden: { opacity: 0, y: 8 },
     enter: { opacity: 1, y: 0, transition: { duration: 0.42, ease: "easeOut" } },
@@ -133,17 +186,63 @@ export default function Card() {
     filledPulse: { scale: [1, 1.06, 1], transition: { duration: 0.42 } },
   };
 
-  // handlers
+  // Handlers
   const handleSwitchUser = () => {
     localStorage.removeItem("cr_memberCode");
     localStorage.removeItem("cr_phone");
     navigate("/start", { replace: true });
   };
-
   const handleInlineLogoError = () => setLogoInlineVisible(false);
 
-  // --- Render states --- //
+  // --- If holiday active, show holiday panel and DO NOT show card/stamps ---
+  if (holiday?.isHoliday) {
+    const { title, message } = holiday;
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-amber-50 to-amber-100 flex items-center justify-center p-6">
+        <motion.section
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.45 }}
+          className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-2xl p-6 text-center"
+          aria-live="polite"
+        >
+          <div className="flex items-center justify-center mb-4">
+            <div className="rounded-full bg-amber-100 p-3 shadow-inner">
+              {/* small decorative emoji/logo */}
+              <span style={{ fontSize: 28 }}>{holiday.key === "christmas" ? "🎄" : "🎉"}</span>
+            </div>
+          </div>
 
+          <h2 className="text-2xl font-extrabold text-amber-900 mb-2">{title}</h2>
+          <p className="text-sm text-amber-800/90 mb-4">{message}</p>
+
+          <div className="space-y-3">
+            <p className="text-xs text-amber-700/80">
+              We apologize for the temporary downtime. Please visit us again after the holiday period.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-700 text-white text-sm shadow hover:brightness-105 transition"
+              >
+                Refresh
+              </button>
+
+              <button
+                onClick={handleSwitchUser}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-amber-700 text-amber-700 text-sm hover:bg-amber-50 transition"
+              >
+                Switch user
+              </button>
+            </div>
+          </div>
+        </motion.section>
+      </main>
+    );
+  }
+
+  // Loading
   if (loading) {
     return (
       <main className="min-h-screen bg-amber-50 flex items-center justify-center py-8 px-4">
@@ -164,6 +263,7 @@ export default function Card() {
     );
   }
 
+  // Error with no card
   if (error && !card) {
     return (
       <main className="min-h-screen bg-amber-50 flex items-center justify-center p-6">
@@ -189,7 +289,7 @@ export default function Card() {
     );
   }
 
-  // MAIN UI: NOTE: items-center centers the card vertically on all screens
+  // --- Main card UI (normal days) ---
   return (
     <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
       <motion.section
@@ -199,16 +299,14 @@ export default function Card() {
         className="w-full max-w-sm md:max-w-xl relative"
         aria-labelledby="stamp-card-heading"
       >
-        {/* Card container */}
-        <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-lg text-amber-100 p-4 sm:p-5 md:p-8 overflow-hidden">
-          {/* top glows */}
+        <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-lg text-amber-100 p-4 sm:p-6 md:p-8 overflow-hidden">
+          {/* subtle decorative glows */}
           <div className="absolute -left-6 -top-10 w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
           <div className="absolute -right-8 bottom-[-30px] w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
 
-          {/* Header with inline logo perfectly aligned */}
+          {/* Header with inline logo */}
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3 min-w-0">
-              {/* Inline logo (small round) - visible if asset loads */}
               {logoInlineVisible && (
                 <img
                   src={inlineLogoSrc}
@@ -305,7 +403,7 @@ export default function Card() {
                           : "bg-transparent text-amber-100/80 border-amber-100/20 hover:bg-amber-100/6"
                       }`}
                       onClick={() => {
-                        // placeholder for future interactions (non-hook-creating)
+                        // place for future interactions (keep non-hook-creating)
                       }}
                     >
                       <span className="font-semibold pointer-events-none select-none text-xs md:text-sm">
@@ -327,7 +425,9 @@ export default function Card() {
               Show this card at the counter after each visit. Every bill of{" "}
               <span className="font-semibold">₹1000 or more</span> earns <span className="font-semibold">1 stamp</span>.
             </p>
-            <p>After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat.</p>
+            <p>
+              After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat.
+            </p>
 
             <div className="flex items-center gap-2 mt-2">
               <button
