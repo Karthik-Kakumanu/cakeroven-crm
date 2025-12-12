@@ -5,14 +5,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Mobile-optimized Card.jsx with inline logo in header
- *
- * - Logo placed inside the card header (left side) for guaranteed visibility
- * - Uses /cakeroven-logo.png from public/
- * - 4-column stamp grid on mobile
- * - Mobile-first layout, compact card size
+ * Card.jsx
+ * - Inline logo left of CAKEROVEN LOYALTY (perfectly aligned)
+ * - Card vertically centered on mobile & desktop
+ * - Mobile-first compact card, 4 stamps per row
  * - Framer Motion micro-interactions
- * - All hooks remain at top-level
+ * - Robust logo fallback (onError hides logo)
+ *
+ * Place cakeroven-logo.png in public/
+ * Install framer-motion: npm i framer-motion
  */
 
 export default function Card() {
@@ -34,7 +35,7 @@ export default function Card() {
     };
   }, []);
 
-  // Remove stray "member" query param (safe)
+  // remove stray query param (safe)
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && window.location?.search) {
@@ -45,11 +46,11 @@ export default function Card() {
         }
       }
     } catch (e) {
-      // ignore malformed url
+      // ignore
     }
   }, []);
 
-  // Fetch card data
+  // fetch card
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
@@ -75,7 +76,6 @@ export default function Card() {
           const message = d.message || "Unable to load card. Please sign in again.";
           setError(message);
           setLoading(false);
-          // clear session so user can re-login
           localStorage.removeItem("cr_memberCode");
           localStorage.removeItem("cr_phone");
           return;
@@ -100,7 +100,7 @@ export default function Card() {
     return () => controller.abort();
   }, [navigate]);
 
-  // Celebrate when full
+  // celebrate
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
   const isRewardReady = stamps >= 12;
@@ -113,15 +113,15 @@ export default function Card() {
     }
   }, [isRewardReady]);
 
-  // Derived values
+  // derived
   const memberCode = card?.memberCode || card?.member_code || "—";
   const maskedPhone =
     card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
 
-  // Inline logo path (ensure leading slash; public/ file)
+  // inline logo path (leading slash ensures public root)
   const inlineLogoSrc = `${process.env.PUBLIC_URL || ""}/cakeroven-logo.png`;
 
-  // ---------- Motion variants ----------
+  // motion
   const page = {
     hidden: { opacity: 0, y: 8 },
     enter: { opacity: 1, y: 0, transition: { duration: 0.42, ease: "easeOut" } },
@@ -133,7 +133,7 @@ export default function Card() {
     filledPulse: { scale: [1, 1.06, 1], transition: { duration: 0.42 } },
   };
 
-  // ---------- Handlers ----------
+  // handlers
   const handleSwitchUser = () => {
     localStorage.removeItem("cr_memberCode");
     localStorage.removeItem("cr_phone");
@@ -142,16 +142,20 @@ export default function Card() {
 
   const handleInlineLogoError = () => setLogoInlineVisible(false);
 
-  // ---------- Render states ----------
+  // --- Render states --- //
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-amber-50 flex items-start justify-center py-8 px-4">
+      <main className="min-h-screen bg-amber-50 flex items-center justify-center py-8 px-4">
         <div className="w-full max-w-sm animate-fade-in p-5 rounded-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] shadow-xl text-amber-100">
           <div className="h-3 w-32 rounded-full bg-amber-100/20 mb-3" />
           <div className="h-4 w-44 rounded-full bg-amber-100/12 mb-5" />
           <div className="grid grid-cols-4 gap-2">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="h-9 w-9 rounded-full border border-amber-100/12 bg-black/5 animate-pulse" />
+              <div
+                key={i}
+                className="h-9 w-9 rounded-full border border-amber-100/12 bg-black/5 animate-pulse"
+              />
             ))}
           </div>
           <p className="mt-4 text-xs text-amber-100/70">Loading your card…</p>
@@ -185,9 +189,9 @@ export default function Card() {
     );
   }
 
-  // ---------- Main UI ----------
+  // MAIN UI: NOTE: items-center centers the card vertically on all screens
   return (
-    <main className="min-h-screen bg-amber-50 flex items-start md:items-center justify-center p-4">
+    <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
       <motion.section
         initial="hidden"
         animate="enter"
@@ -201,16 +205,16 @@ export default function Card() {
           <div className="absolute -left-6 -top-10 w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
           <div className="absolute -right-8 bottom-[-30px] w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
 
-          {/* Header with inline logo */}
+          {/* Header with inline logo perfectly aligned */}
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3 min-w-0">
-              {/* Inline logo (small) */}
+              {/* Inline logo (small round) - visible if asset loads */}
               {logoInlineVisible && (
                 <img
                   src={inlineLogoSrc}
                   alt="CakeRoven logo"
                   onError={handleInlineLogoError}
-                  className="h-10 w-10 rounded-full object-contain bg-white/3 p-1"
+                  className="h-10 w-10 rounded-full object-contain bg-white/3 p-1 flex-shrink-0"
                 />
               )}
 
@@ -301,7 +305,7 @@ export default function Card() {
                           : "bg-transparent text-amber-100/80 border-amber-100/20 hover:bg-amber-100/6"
                       }`}
                       onClick={() => {
-                        // placeholder: keep non-hook-creating
+                        // placeholder for future interactions (non-hook-creating)
                       }}
                     >
                       <span className="font-semibold pointer-events-none select-none text-xs md:text-sm">
