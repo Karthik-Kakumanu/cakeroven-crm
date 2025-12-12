@@ -426,7 +426,8 @@ export default function Card() {
               <span className="font-semibold">₹1000 or more</span> earns <span className="font-semibold">1 stamp</span>.
             </p>
             <p>
-              After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat. A Gift Hamper / A Cake
+              After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat. 
+              A Gift Hamper / A Cake.
             </p>
 
             <div className="flex items-center gap-2 mt-2">
