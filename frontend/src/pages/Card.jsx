@@ -5,11 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card Component
- * - Modern responsive layout using Tailwind CSS
- * - Framer Motion animations for entrance and stamp fills
- * - Background animated logo (place cakeroven-logo.png in public/)
- * - Robust fetch with AbortController and graceful error handling
+ * Upgraded Card.jsx
+ * - Mobile-first, responsive, modern design using Tailwind CSS
+ * - Animated floating background logo (mobile + desktop)
+ * - Left & right "blast" ambient animations on entrance
+ * - Framer Motion animations for entrance, stamp fills, micro-interactions
+ * - Clean, readable structure and safe fetch handling (AbortController)
+ *
+ * Requirements:
+ * - Put `cakeroven-logo.png` in your public/ folder so it is available at /cakeroven-logo.png
+ * - Install framer-motion: `npm i framer-motion`
  */
 
 export default function Card() {
@@ -17,9 +22,9 @@ export default function Card() {
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPhone, setShowPhone] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
   const isMountedRef = useRef(true);
 
-  // Clean up on unmount
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -27,7 +32,7 @@ export default function Card() {
     };
   }, []);
 
-  // remove member query param if set manually
+  // Remove stray query param (same as earlier)
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window?.location?.search) {
@@ -43,14 +48,12 @@ export default function Card() {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
 
-    // If no session → send to start
     if (!memberCode || !phone) {
       navigate("/start", { replace: true });
       return;
     }
 
     const controller = new AbortController();
-
     const fetchCard = async () => {
       setLoading(true);
       try {
@@ -58,7 +61,6 @@ export default function Card() {
           phone
         )}`;
         const res = await fetch(url, { signal: controller.signal });
-
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           alert(data.message || "Could not load card. Please sign in again.");
@@ -67,7 +69,6 @@ export default function Card() {
           navigate("/start", { replace: true });
           return;
         }
-
         const data = await res.json();
         if (isMountedRef.current) {
           setCard(data.card || data);
@@ -84,10 +85,7 @@ export default function Card() {
     };
 
     fetchCard();
-
-    return () => {
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [navigate]);
 
   const handleSwitchUser = () => {
@@ -96,22 +94,22 @@ export default function Card() {
     navigate("/start", { replace: true });
   };
 
-  // Loading skeleton
+  // Loading skeleton (mobile-first)
   if (loading) {
     return (
-      <main className="min-h-screen bg-amber-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-lg animate-fade-in px-6 py-10 rounded-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] shadow-xl relative overflow-hidden">
-          <div className="h-5 w-48 rounded-full bg-[#f5e6c8]/20 mb-6" />
-          <div className="h-6 w-64 rounded-full bg-[#f5e6c8]/12 mb-4" />
-          <div className="grid grid-cols-4 gap-3 mt-6">
+      <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md animate-fade-in px-5 py-8 rounded-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] shadow-2xl relative overflow-hidden">
+          <div className="h-5 w-40 rounded-full bg-amber-100/20 mb-5" />
+          <div className="h-6 w-56 rounded-full bg-amber-100/12 mb-6" />
+          <div className="grid grid-cols-4 gap-3 mt-4">
             {Array.from({ length: 12 }).map((_, i) => (
               <div
                 key={i}
-                className="h-10 w-10 rounded-full border border-[#f5e6c8]/10 bg-[#000000]/5 animate-pulse"
+                className="h-10 w-10 rounded-full border border-amber-100/10 bg-black/5 animate-pulse"
               />
             ))}
           </div>
-          <p className="text-sm text-[#f5e6c8]/60 mt-6">Loading your card…</p>
+          <p className="text-sm text-amber-100/60 mt-6">Loading your card…</p>
         </div>
       </main>
     );
@@ -123,90 +121,133 @@ export default function Card() {
   const stamps = Number(card.currentStamps ?? card.current_stamps ?? 0);
   const rewards = Number(card.totalRewards ?? card.total_rewards ?? 0);
   const isRewardReady = stamps >= 12;
-
   const maskedPhone =
     card.phone && card.phone.length >= 3
       ? "••••••" + card.phone.slice(-3)
       : "••••••••••";
 
-  // paths for background logo - recommend placing file in public/
-  const logoSrc =
-    process.env.PUBLIC_URL + "/cakeroven-logo.png" || "/cakeroven-logo.png";
+  // asset path (public)
+  const logoSrc = process.env.PUBLIC_URL + "/cakeroven-logo.png";
 
-  // Framer motion variants
-  const containerVariants = {
-    hidden: { opacity: 0, y: 14 },
-    enter: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+  // motion variants
+  const pageVariant = {
+    hidden: { opacity: 0, y: 12 },
+    enter: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" } },
   };
 
   const stampVariants = {
-    hidden: { scale: 0.85, opacity: 0 },
-    visible: (i) => ({
+    hidden: { scale: 0.9, opacity: 0 },
+    show: (i) => ({
       scale: 1,
       opacity: 1,
-      transition: { delay: i * 0.03, duration: 0.25 },
+      transition: { delay: i * 0.03, duration: 0.28, ease: "easeOut" },
     }),
-    filled: { scale: [1, 1.06, 1], transition: { duration: 0.36 } },
+    filledPulse: { scale: [1, 1.06, 1], transition: { duration: 0.45 } },
   };
 
+  const blastVariantLeft = {
+    hidden: { x: -60, opacity: 0, rotate: -6, scale: 0.9 },
+    enter: {
+      x: -6,
+      opacity: 1,
+      rotate: 0,
+      scale: 1,
+      transition: { duration: 0.9, ease: "circOut" },
+    },
+  };
+  const blastVariantRight = {
+    hidden: { x: 60, opacity: 0, rotate: 6, scale: 0.9 },
+    enter: {
+      x: 6,
+      opacity: 1,
+      rotate: 0,
+      scale: 1,
+      transition: { duration: 0.9, ease: "circOut" },
+    },
+  };
+
+  // celebrate when full (small automatic confetti-like scale)
+  useEffect(() => {
+    if (isRewardReady) {
+      setCelebrate(true);
+      const t = setTimeout(() => setCelebrate(false), 1600);
+      return () => clearTimeout(t);
+    }
+  }, [isRewardReady]);
+
   return (
-    <main className="min-h-screen bg-amber-100 flex items-center justify-center p-6">
+    <main className="min-h-screen bg-amber-50 flex items-start md:items-center justify-center p-4 md:p-8">
       <motion.section
         initial="hidden"
         animate="enter"
-        variants={containerVariants}
-        className="w-full max-w-2xl relative"
+        variants={pageVariant}
+        className="w-full max-w-xl relative"
         aria-labelledby="stamp-card-heading"
       >
-        {/* Animated background logo */}
+        {/* left & right blast ambient shapes (subtle) */}
+        <motion.div
+          variants={blastVariantLeft}
+          initial="hidden"
+          animate="enter"
+          className="pointer-events-none absolute left-[-40px] top-6 hidden md:block"
+        >
+          <div className="w-40 h-80 rounded-l-full bg-gradient-to-br from-amber-200/8 to-transparent blur-xl" />
+        </motion.div>
+
+        <motion.div
+          variants={blastVariantRight}
+          initial="hidden"
+          animate="enter"
+          className="pointer-events-none absolute right-[-40px] top-6 hidden md:block"
+        >
+          <div className="w-40 h-80 rounded-r-full bg-gradient-to-bl from-amber-200/8 to-transparent blur-xl" />
+        </motion.div>
+
+        {/* Floating logo (both mobile & desktop) */}
         <motion.img
-          aria-hidden
           src={logoSrc}
-          alt=""
+          alt="CakeRoven logo background"
+          aria-hidden
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{
-            opacity: [0.06, 0.08, 0.06],
-            rotate: [0, 1.2, 0],
+            opacity: [0.04, 0.08, 0.04],
+            rotate: [0, 1.5, 0],
             scale: [1, 1.02, 1],
+            x: [0, 6, 0],
           }}
-          transition={{ duration: 12, repeat: Infinity, repeatType: "mirror" }}
-          className="pointer-events-none absolute inset-0 m-auto w-[60%] max-w-[700px] opacity-5 mix-blend-overlay transform -translate-y-6"
+          transition={{ duration: 9, repeat: Infinity, repeatType: "mirror" }}
+          className="pointer-events-none absolute inset-0 m-auto w-[62%] max-w-[740px] opacity-6 mix-blend-overlay transform -translate-y-8"
         />
 
-        <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-[0_30px_80px_rgba(10,8,6,0.6)] text-amber-100 p-6 md:p-10 overflow-hidden">
-          {/* soft ambient glows */}
-          <div className="absolute -left-10 -top-14 w-56 h-56 rounded-full bg-amber-100/6 blur-2xl" />
-          <div className="absolute -right-12 bottom-[-40px] w-44 h-44 rounded-full bg-amber-100/6 blur-2xl" />
+        {/* Main card */}
+        <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-[0_28px_60px_rgba(3,2,0,0.6)] text-amber-100 p-5 sm:p-8 md:p-10 overflow-hidden">
+          {/* top decorative glows */}
+          <div className="absolute -left-8 -top-12 w-44 h-44 rounded-full bg-amber-100/6 blur-2xl" />
+          <div className="absolute -right-10 bottom-[-36px] w-44 h-44 rounded-full bg-amber-100/6 blur-2xl" />
 
           {/* Header */}
-          <div className="flex items-start justify-between gap-4 mb-5">
-            <div>
-              <p className="text-xs tracking-widest uppercase text-amber-100/70">
-                CAKEROVEN LOYALTY
-              </p>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-5">
+            <div className="min-w-0">
+              <p className="text-xs tracking-widest uppercase text-amber-100/65">CAKEROVEN LOYALTY</p>
               <h1
                 id="stamp-card-heading"
-                className="text-2xl md:text-3xl font-extrabold leading-tight mt-1"
+                className={`text-xl sm:text-2xl md:text-3xl font-extrabold leading-tight mt-1 tracking-tight ${celebrate ? "text-amber-50" : ""}`}
               >
                 Digital Stamp Card
               </h1>
             </div>
 
             <div className="text-right">
-              <p className="text-xs uppercase tracking-wider text-amber-100/60">
-                Member ID
-              </p>
+              <p className="text-xs uppercase tracking-wider text-amber-100/60">Member ID</p>
               <p className="text-sm font-mono font-semibold mt-1">{memberCode}</p>
             </div>
           </div>
 
-          {/* Holder */}
+          {/* Holder + phone */}
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-amber-100/70">Card Holder</p>
-              <p className="text-lg md:text-xl font-semibold truncate">
-                {card.name || "—"}
-              </p>
+              <p className="text-lg md:text-xl font-semibold truncate">{card.name || "—"}</p>
             </div>
 
             <div className="flex items-center gap-3 text-sm">
@@ -222,16 +263,14 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Progress */}
-          <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {/* Progress row */}
+          <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">
                 {stamps}/12
               </span>
-              <p className="text-sm text-amber-100/80 truncate">
-                {isRewardReady
-                  ? "Reward unlocked! 🎉 Show this card to claim."
-                  : "stamps to your next treat."}
+              <p className="text-sm text-amber-100/80">
+                {isRewardReady ? "Reward unlocked! 🎉 Tap to claim." : "stamps to your next treat."}
               </p>
             </div>
 
@@ -240,26 +279,23 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Stamp board card */}
-          <div className="rounded-2xl bg-[#3d0f0b]/60 border border-amber-100/6 p-5 mb-4">
+          {/* Stamp board */}
+          <div className="rounded-2xl bg-[#3d0f0b]/60 border border-amber-100/6 p-4 md:p-6 mb-4 relative">
             <div className="flex items-start justify-between mb-3 gap-3">
               <div className="text-sm text-amber-100/80">
                 <p>
                   Collect <span className="font-semibold">12 stamps</span> to unlock a special CakeRoven treat 🎁
                 </p>
                 {rewards > 0 && (
-                  <p className="mt-1 text-amber-200/90">
-                    Rewards earned so far: <span className="font-semibold">{rewards}</span>
-                  </p>
+                  <p className="mt-1 text-amber-200/90">Rewards earned: <span className="font-semibold">{rewards}</span></p>
                 )}
               </div>
 
-              <span className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20">
-                BOARD
-              </span>
+              <span className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20">BOARD</span>
             </div>
 
-            <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-4 gap-4 justify-center">
+            {/* grid: mobile 3 cols, tablet 4 cols */}
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 justify-center">
               <AnimatePresence>
                 {Array.from({ length: 12 }).map((_, i) => {
                   const index = i + 1;
@@ -269,18 +305,18 @@ export default function Card() {
                       key={index}
                       aria-label={`Stamp ${index} ${filled ? "filled" : "empty"}`}
                       initial="hidden"
-                      animate={filled ? "filled" : "visible"}
+                      animate={filled ? "filledPulse" : "show"}
                       variants={stampVariants}
                       custom={i}
                       whileTap={{ scale: 0.96 }}
-                      className={`flex items-center justify-center h-12 w-12 md:h-12 md:w-12 rounded-full border transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-200/30 ${
+                      title={filled ? `Collected (${index})` : `Stamp ${index}`}
+                      className={`flex items-center justify-center h-12 w-12 md:h-14 md:w-14 rounded-full border transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-200/30 ${
                         filled
-                          ? "bg-amber-100 text-[#501914] border-transparent shadow-[0_6px_18px_rgba(0,0,0,0.45)]"
-                          : "bg-transparent text-amber-100/80 border-amber-100/20"
+                          ? "bg-amber-100 text-[#501914] border-transparent shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
+                          : "bg-transparent text-amber-100/80 border-amber-100/20 hover:bg-amber-100/6"
                       }`}
                       onClick={() => {
-                        // Optional: you could open a modal or animate on click for unfilled stamps.
-                        // keep non-destructive by default
+                        // placeholder for future interactions (non-destructive)
                       }}
                     >
                       <span className="font-semibold select-none pointer-events-none">{index}</span>
@@ -289,9 +325,12 @@ export default function Card() {
                 })}
               </AnimatePresence>
             </div>
+
+            {/* subtle border decoration */}
+            <div className="pointer-events-none absolute inset-0 rounded-2xl border border-amber-100/8 m-0.5" />
           </div>
 
-          {/* Footer / Instructions */}
+          {/* Info and actions */}
           <div className="text-sm text-amber-100/75 space-y-3">
             <p>
               Show this card at the counter after each visit. Every bill of{" "}
@@ -301,7 +340,7 @@ export default function Card() {
               After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat.
             </p>
 
-            <div className="flex items-center gap-3 mt-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mt-3">
               <button
                 onClick={handleSwitchUser}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-amber-100/20 text-sm hover:bg-amber-100/6 transition"
@@ -310,19 +349,80 @@ export default function Card() {
               </button>
 
               {isRewardReady && (
-                <motion.div
-                  initial={{ scale: 0.98, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.35 }}
+                <motion.button
+                  onClick={() => {
+                    // show a small celebratory micro-modal or action
+                    setCelebrate(true);
+                    setTimeout(() => setCelebrate(false), 1200);
+                  }}
+                  className="ml-0 sm:ml-auto inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-amber-100/10 to-amber-100/12 border border-amber-100/30 text-sm hover:brightness-105 transition"
+                  initial={{ scale: 0.98 }}
                 >
-                  <span className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-100/8 border border-amber-100/30 text-sm">
-                    🎉 Reward ready
-                  </span>
-                </motion.div>
+                  🎉 Claim Reward
+                </motion.button>
               )}
             </div>
           </div>
         </div>
+
+        {/* celebrate overlay (confetti-like circles) */}
+        <AnimatePresence>
+          {celebrate && (
+            <motion.div
+              key="celebrate"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.28 }}
+                className="absolute inset-0 rounded-3xl bg-gradient-to-r from-transparent via-amber-100/6 to-transparent"
+              />
+              {/* small animated bursts */}
+              <div className="absolute inset-0 flex items-center justify-between px-6">
+                <motion.span
+                  initial={{ x: -10, scale: 0.6, opacity: 0 }}
+                  animate={{ x: -40, scale: 1.05, opacity: 1 }}
+                  transition={{ duration: 0.8 }}
+                  className="hidden md:block w-24 h-24 rounded-full bg-amber-200/20 blur-lg"
+                />
+                <motion.span
+                  initial={{ x: 10, scale: 0.6, opacity: 0 }}
+                  animate={{ x: 40, scale: 1.05, opacity: 1 }}
+                  transition={{ duration: 0.8 }}
+                  className="hidden md:block w-24 h-24 rounded-full bg-amber-200/20 blur-lg"
+                />
+              </div>
+
+              {/* floating tiny dots */}
+              <div className="absolute inset-0">
+                {Array.from({ length: 12 }).map((_, idx) => (
+                  <motion.span
+                    key={idx}
+                    initial={{ y: 0, x: 0, opacity: 0 }}
+                    animate={{
+                      y: [-6 - idx, -10 - idx, -6 - idx],
+                      x: [(-8 + idx) * 2, (8 - idx) * 2, (-8 + idx) * 2],
+                      opacity: 1,
+                    }}
+                    transition={{ duration: 1.2, delay: idx * 0.04, repeat: 0 }}
+                    className="absolute bg-amber-100 rounded-full"
+                    style={{
+                      width: `${4 + (idx % 3)}px`,
+                      height: `${4 + (idx % 3)}px`,
+                      left: `${8 + idx * 6}%`,
+                      top: `${48 - idx}%`,
+                      opacity: 0.9,
+                    }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.section>
     </main>
   );
