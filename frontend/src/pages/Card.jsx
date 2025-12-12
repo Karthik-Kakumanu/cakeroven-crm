@@ -5,22 +5,26 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Upgraded Card.jsx
- * - Mobile-first, responsive, modern design using Tailwind CSS
- * - Animated floating background logo (mobile + desktop)
- * - Left & right "blast" ambient animations on entrance
- * - Framer Motion animations for entrance, stamp fills, micro-interactions
- * - Clean, readable structure and safe fetch handling (AbortController)
+ * Upgraded Card.jsx (modified per request)
+ *
+ * Key changes from your copy:
+ * - All hooks run unconditionally (kept at top-level)
+ * - Added `error` fallback UI instead of returning null
+ * - Small UX improvements and safe fetch handling
+ * - Mobile-first responsive styling with Tailwind
  *
  * Requirements:
- * - Put `cakeroven-logo.png` in your public/ folder so it is available at /cakeroven-logo.png
- * - Install framer-motion: `npm i framer-motion`
+ * - cakeroven-logo.png should be in public/
+ * - framer-motion installed: npm i framer-motion
  */
 
 export default function Card() {
   const navigate = useNavigate();
+
+  // --- Hooks (always at top level) ---
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(""); // new: expose fetch errors
   const [showPhone, setShowPhone] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
   const isMountedRef = useRef(true);
@@ -32,23 +36,27 @@ export default function Card() {
     };
   }, []);
 
-  // Remove stray query param (same as earlier)
+  // remove stray query param on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window?.location?.search) {
+    try {
       const url = new URL(window.location.href);
       if (url.searchParams.has("member")) {
         url.searchParams.delete("member");
         window.history.replaceState({}, "", url.pathname);
       }
+    } catch (e) {
+      // ignore malformed url
     }
   }, []);
 
+  // fetch card (safe, AbortController)
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
 
     if (!memberCode || !phone) {
+      // If no session, redirect early (this is safe; all hooks already invoked)
       navigate("/start", { replace: true });
       return;
     }
@@ -56,19 +64,26 @@ export default function Card() {
     const controller = new AbortController();
     const fetchCard = async () => {
       setLoading(true);
+      setError("");
       try {
         const url = `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(
           phone
         )}`;
         const res = await fetch(url, { signal: controller.signal });
+
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          alert(data.message || "Could not load card. Please sign in again.");
+          const msg = data.message || "Could not load card. Please sign in again.";
+          setError(msg);
+          // Clear session and navigate back to start for safety
           localStorage.removeItem("cr_memberCode");
           localStorage.removeItem("cr_phone");
-          navigate("/start", { replace: true });
+          if (isMountedRef.current) {
+            setLoading(false);
+          }
           return;
         }
+
         const data = await res.json();
         if (isMountedRef.current) {
           setCard(data.card || data);
@@ -78,8 +93,8 @@ export default function Card() {
         if (err.name === "AbortError") return;
         console.error("Card fetch error:", err);
         if (isMountedRef.current) {
-          alert("Server error while loading your card.");
-          navigate("/start", { replace: true });
+          setError("Server error while loading your card.");
+          setLoading(false);
         }
       }
     };
@@ -88,43 +103,25 @@ export default function Card() {
     return () => controller.abort();
   }, [navigate]);
 
+  // utility handlers
   const handleSwitchUser = () => {
     localStorage.removeItem("cr_memberCode");
     localStorage.removeItem("cr_phone");
     navigate("/start", { replace: true });
   };
 
-  // Loading skeleton (mobile-first)
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md animate-fade-in px-5 py-8 rounded-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] shadow-2xl relative overflow-hidden">
-          <div className="h-5 w-40 rounded-full bg-amber-100/20 mb-5" />
-          <div className="h-6 w-56 rounded-full bg-amber-100/12 mb-6" />
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-10 w-10 rounded-full border border-amber-100/10 bg-black/5 animate-pulse"
-              />
-            ))}
-          </div>
-          <p className="text-sm text-amber-100/60 mt-6">Loading your card…</p>
-        </div>
-      </main>
-    );
-  }
+  const handleRetry = () => {
+    // simple page reload to re-trigger the fetch effect. Keeps hooks stable.
+    window.location.reload();
+  };
 
-  if (!card) return null;
-
-  const memberCode = card.memberCode || card.member_code || "—";
-  const stamps = Number(card.currentStamps ?? card.current_stamps ?? 0);
-  const rewards = Number(card.totalRewards ?? card.total_rewards ?? 0);
+  // Derived values (safe even if card is null)
+  const memberCode = (card && (card.memberCode || card.member_code)) || "—";
+  const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
+  const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
   const isRewardReady = stamps >= 12;
   const maskedPhone =
-    card.phone && card.phone.length >= 3
-      ? "••••••" + card.phone.slice(-3)
-      : "••••••••••";
+    card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
 
   // asset path (public)
   const logoSrc = process.env.PUBLIC_URL + "/cakeroven-logo.png";
@@ -175,6 +172,56 @@ export default function Card() {
     }
   }, [isRewardReady]);
 
+  // --- Render states ---
+
+  // Loading skeleton (mobile-first)
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md animate-fade-in px-5 py-8 rounded-2xl bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] shadow-2xl relative overflow-hidden">
+          <div className="h-5 w-40 rounded-full bg-amber-100/20 mb-5" />
+          <div className="h-6 w-56 rounded-full bg-amber-100/12 mb-6" />
+          <div className="grid grid-cols-4 gap-3 mt-4">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-10 w-10 rounded-full border border-amber-100/10 bg-black/5 animate-pulse"
+              />
+            ))}
+          </div>
+          <p className="text-sm text-amber-100/60 mt-6">Loading your card…</p>
+        </div>
+      </main>
+    );
+  }
+
+  // Error fallback UI (safer than returning null)
+  if (error && !card) {
+    return (
+      <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md px-6 py-8 rounded-2xl bg-white/5 border border-amber-100/8 shadow-lg text-amber-900">
+          <h2 className="text-lg font-semibold mb-2">Unable to load card</h2>
+          <p className="text-sm mb-4 text-amber-700/80">{error}</p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleRetry}
+              className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-amber-600 text-white text-sm hover:brightness-105 transition"
+            >
+              Retry
+            </button>
+            <button
+              onClick={handleSwitchUser}
+              className="inline-flex items-center justify-center px-4 py-2 rounded-full border border-amber-600 text-amber-600 text-sm hover:bg-amber-600/6 transition"
+            >
+              Switch user
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // If card exists, render main UI
   return (
     <main className="min-h-screen bg-amber-50 flex items-start md:items-center justify-center p-4 md:p-8">
       <motion.section
@@ -247,12 +294,12 @@ export default function Card() {
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-amber-100/70">Card Holder</p>
-              <p className="text-lg md:text-xl font-semibold truncate">{card.name || "—"}</p>
+              <p className="text-lg md:text-xl font-semibold truncate">{card?.name || "—"}</p>
             </div>
 
             <div className="flex items-center gap-3 text-sm">
               <span className="text-xs text-amber-100/70">Phone:</span>
-              <span className="font-mono">{showPhone ? card.phone : maskedPhone}</span>
+              <span className="font-mono">{showPhone ? card?.phone : maskedPhone}</span>
               <button
                 aria-pressed={showPhone}
                 onClick={() => setShowPhone((v) => !v)}
@@ -296,7 +343,7 @@ export default function Card() {
 
             {/* grid: mobile 3 cols, tablet 4 cols */}
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 justify-center">
-              <AnimatePresence>
+              <AnimatePresence initial={false}>
                 {Array.from({ length: 12 }).map((_, i) => {
                   const index = i + 1;
                   const filled = stamps >= index;
@@ -317,6 +364,7 @@ export default function Card() {
                       }`}
                       onClick={() => {
                         // placeholder for future interactions (non-destructive)
+                        // keep logic client-side and non-hook-creating
                       }}
                     >
                       <span className="font-semibold select-none pointer-events-none">{index}</span>
