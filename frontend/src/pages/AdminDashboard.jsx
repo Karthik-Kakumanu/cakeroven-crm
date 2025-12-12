@@ -4,25 +4,19 @@ import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
 
 /**
- * AdminDashboard.jsx
+ * AdminDashboard.jsx - Revised per user requests
  * - Desktop-first full-screen admin dashboard
- * - Polls API periodically for customer data (autofetch every 20s)
- * - Search placed inside customers area
- * - Export CSV / Excel (CSV file)
- * - 12 checkbox stamps per customer (toggle to add/remove stamp)
- * - Rewards history modal (uses server data if available; otherwise shows in-session events)
+ * - Tabs: Dashboard / Insights
+ * - Removed Refresh button from header (kept as Quick Action only)
+ * - Removed Export/Copy buttons from customers header (they live in Quick Actions)
+ * - Stamps are shown in a single horizontal line (12 items) per customer (compact)
+ * - Small stamp buttons (clickable) and compact table rows
+ * - Only one Export CSV button (in Quick Actions)
+ * - Better error feedback when API returns failure (alerts + console)
+ * - Auto-polling for fresh data (every 20s)
  *
- * Important:
- * - For persistent per-stamp dates and rewards history, the server must return
- *   `stamp_history` and `reward_history` arrays for each customer record. Example:
- *   customer.stamp_history = [{ index: 1, date: "2025-12-12T10:20:00Z" }, ...]
- *   customer.reward_history = [{ date: "2025-12-12T10:20:00Z" }, ...]
- *
- * - Current add/remove stamp endpoints are used:
- *   POST ${API_BASE}/api/admin/add-stamp { memberCode } -> returns { card: { currentStamps, totalRewards } }
- *   POST ${API_BASE}/api/admin/remove-stamp { memberCode } -> returns updated card
- *
- * - Exported CSV includes available fields: member_code, name, phone, dob, current_stamps, total_rewards
+ * Note: Backend must support /api/admin/add-stamp and /api/admin/remove-stamp.
+ * If they return 500 you will see an alert — backend needs fixing for those endpoints.
  */
 
 export default function AdminDashboard() {
@@ -30,7 +24,6 @@ export default function AdminDashboard() {
   const token = localStorage.getItem("cr_adminToken");
   const adminName = localStorage.getItem("cr_adminUsername") || "Owner";
 
-  // data & UI state
   const [customers, setCustomers] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [search, setSearch] = useState("");
@@ -43,20 +36,17 @@ export default function AdminDashboard() {
   const autoPollRef = useRef(null);
   const rewardAudioRef = useRef(null);
 
-  // In-session stampHistory + rewardEvents cache (client-only fallback).
-  // Structure: { [member_code]: { stamp_history: {1: dateStr, 2: dateStr, ...}, reward_history: [dateStr,...] } }
-  // NOTE: This is not persisted—server must provide stamp_history/reward_history for persistence.
+  // client-side session history (fallback)
   const sessionHistoryRef = useRef({});
 
-  // Helper: format date nicely
+  // Helper: date formatting
   const formatDate = (iso) => {
     if (!iso) return "—";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    return d.toLocaleDateString("en-GB");
   };
 
-  // Stats memo
   const stats = useMemo(() => {
     let totalUsers = customers.length;
     let totalStamps = 0;
@@ -81,21 +71,18 @@ export default function AdminDashboard() {
     return { totalUsers, totalStamps, totalRewards, birthdaysToday };
   }, [customers]);
 
-  // Fetch function
+  // Fetch customers
   const fetchCustomers = async (opts = { silence: false }) => {
     if (!token) {
       navigate("/admin");
       return;
     }
-
     if (!opts.silence) setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/admin/customers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           alert("Session expired. Please login again.");
@@ -104,27 +91,22 @@ export default function AdminDashboard() {
           navigate("/admin");
           return;
         }
+        console.error("Failed loading customers:", data);
         alert(data.message || "Failed to load customers");
         setLoading(false);
         return;
       }
-
-      // if server returns stamp_history/reward_history embedded in customers we'll use them
-      const items = (data.customers || []).map((c) => {
-        // normalize fields for UI
-        return {
-          id: c.id,
-          member_code: c.member_code || c.memberCode || c.memberId,
-          name: c.name || c.full_name || "",
-          phone: c.phone || c.mobile || "",
-          dob: c.dob || c.date_of_birth || null,
-          current_stamps: Number(c.current_stamps ?? c.currentStamps ?? 0),
-          total_rewards: Number(c.total_rewards ?? c.totalRewards ?? 0),
-          stamp_history: c.stamp_history || c.stampHistory || null, // optional from server
-          reward_history: c.reward_history || c.rewardHistory || null, // optional
-        };
-      });
-
+      const items = (data.customers || []).map((c) => ({
+        id: c.id,
+        member_code: c.member_code || c.memberCode || c.memberId,
+        name: c.name || c.full_name || "",
+        phone: c.phone || c.mobile || "",
+        dob: c.dob || c.date_of_birth || null,
+        current_stamps: Number(c.current_stamps ?? c.currentStamps ?? 0),
+        total_rewards: Number(c.total_rewards ?? c.totalRewards ?? 0),
+        stamp_history: c.stamp_history || c.stampHistory || null,
+        reward_history: c.reward_history || c.rewardHistory || null,
+      }));
       setCustomers(items);
       setFiltered(filterCustomersByQuery(items, search));
     } catch (err) {
@@ -135,18 +117,16 @@ export default function AdminDashboard() {
     }
   };
 
-  // Auto polling: every 20 seconds (adjustable)
+  // Auto-poll
   useEffect(() => {
     fetchCustomers();
     autoPollRef.current = setInterval(() => {
       fetchCustomers({ silence: true });
     }, 20_000);
-
     return () => clearInterval(autoPollRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Filter helper
   const filterCustomersByQuery = (list, q) => {
     if (!q || !q.trim()) return list;
     const s = q.trim().toLowerCase();
@@ -159,21 +139,17 @@ export default function AdminDashboard() {
     });
   };
 
-  // Search effect
   useEffect(() => {
     setFiltered(filterCustomersByQuery(customers, search));
   }, [search, customers]);
 
-  // Logout
   const handleLogout = () => {
     localStorage.removeItem("cr_adminToken");
     localStorage.removeItem("cr_adminUsername");
     navigate("/admin");
   };
 
-  // Add stamp (calls server). This keeps using your add-stamp API.
-  // We attempt to add one stamp (server will return full card). If server returns new currentStamps,
-  // we update local customers list and also set sessionHistoryRef for per-stamp date timestamp (client-side).
+  // Add stamp API call (single stamp)
   const addStampServer = async (memberCode) => {
     if (!token) return null;
     setAddingFor(memberCode);
@@ -185,41 +161,27 @@ export default function AdminDashboard() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.message || "Could not update stamp");
+        console.error("add-stamp failed:", res.status, data);
+        alert(data.message || `Server error adding stamp (status ${res.status})`);
         return null;
       }
-
-      // update local state with returned card values
       const newStamps = Number(data.card.currentStamps ?? data.card.current_stamps ?? 0);
       const newRewards = Number(data.card.totalRewards ?? data.card.total_rewards ?? 0);
-
       setCustomers((prev) =>
-        prev.map((c) =>
-          c.member_code === memberCode ? { ...c, current_stamps: newStamps, total_rewards: newRewards } : c
-        )
+        prev.map((c) => (c.member_code === memberCode ? { ...c, current_stamps: newStamps, total_rewards: newRewards } : c))
       );
 
-      // record session stamp date for the added stamp (client-only unless server stores it)
+      // session stamp date fallback
       const nowIso = new Date().toISOString();
       const sess = sessionHistoryRef.current[memberCode] || { stamp_history: {}, reward_history: [] };
-      // find the first empty slot (1..12) in stamp_history based on current stamps
-      let stampIndexToSet = 1;
-      // if server returned newStamps, set that index
-      if (newStamps >= 1) stampIndexToSet = newStamps;
+      const idx = newStamps >= 1 ? newStamps : Object.keys(sess.stamp_history || {}).length + 1;
       sess.stamp_history = sess.stamp_history || {};
-      sess.stamp_history[stampIndexToSet] = nowIso;
+      sess.stamp_history[idx] = nowIso;
 
-      // If this add operation caused reward to be incremented (your server returns reward increment), push reward event
       if (newStamps === 0 && newRewards > 0) {
-        // reward happened
         sess.reward_history = sess.reward_history || [];
         sess.reward_history.push(nowIso);
-        setCelebration({
-          memberCode,
-          name: prevFindName(memberCode),
-          rewards: newRewards,
-        });
-        // play audio if present
+        setCelebration({ memberCode, name: customers.find((x) => x.member_code === memberCode)?.name || "", rewards: newRewards });
         if (rewardAudioRef.current) {
           try {
             rewardAudioRef.current.currentTime = 0;
@@ -227,19 +189,18 @@ export default function AdminDashboard() {
           } catch (e) {}
         }
       }
-
       sessionHistoryRef.current[memberCode] = sess;
       return { newStamps, newRewards };
     } catch (err) {
-      console.error("addStampServer", err);
-      alert("Server error");
+      console.error("addStampServer error:", err);
+      alert("Server error while adding stamp");
       return null;
     } finally {
       setAddingFor(null);
     }
   };
 
-  // Remove stamp (calls server)
+  // Remove stamp API call (single)
   const removeStampServer = async (memberCode) => {
     if (!token) return null;
     setRemovingFor(memberCode);
@@ -251,78 +212,53 @@ export default function AdminDashboard() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.message || "Could not undo stamp");
+        console.error("remove-stamp failed:", res.status, data);
+        alert(data.message || `Server error removing stamp (status ${res.status})`);
         return null;
       }
-
       const newStamps = Number(data.card.currentStamps ?? data.card.current_stamps ?? 0);
       const newRewards = Number(data.card.totalRewards ?? data.card.total_rewards ?? 0);
-
       setCustomers((prev) =>
-        prev.map((c) =>
-          c.member_code === memberCode ? { ...c, current_stamps: newStamps, total_rewards: newRewards } : c
-        )
+        prev.map((c) => (c.member_code === memberCode ? { ...c, current_stamps: newStamps, total_rewards: newRewards } : c))
       );
 
-      // remove session stamp date for highest index if exists (client-only)
+      // session remove highest stamp
       const sess = sessionHistoryRef.current[memberCode];
       if (sess && sess.stamp_history) {
-        // find highest key and remove
         const keys = Object.keys(sess.stamp_history).map((k) => Number(k)).sort((a, b) => b - a);
-        if (keys.length) {
-          delete sess.stamp_history[keys[0]];
-        }
+        if (keys.length) delete sess.stamp_history[keys[0]];
       }
-
       sessionHistoryRef.current[memberCode] = sess || { stamp_history: {}, reward_history: [] };
       return { newStamps, newRewards };
     } catch (err) {
-      console.error("removeStampServer", err);
-      alert("Server error");
+      console.error("removeStampServer error:", err);
+      alert("Server error while removing stamp");
       return null;
     } finally {
       setRemovingFor(null);
     }
   };
 
-  // Helper to find name from current customers
-  const prevFindName = (memberCode) => {
-    const c = customers.find((x) => x.member_code === memberCode);
-    return c?.name || "";
-  };
-
-  // When user toggles a specific stamp index for a customer
+  // toggle a stamp index: minimal behavior -> add/remove one stamp per click
   const toggleStampIndex = async (memberCode, index) => {
     const c = customers.find((x) => x.member_code === memberCode);
     if (!c) return;
-    // If the stamp at this index is already present according to server stamp_history, remove it.
-    // But in most setups server only stores a count; our strategy:
-    // - If index <= current_stamps -> consider it filled; unchecking should call removeStampServer once
-    // - If index > current_stamps -> checking should call addStampServer enough times to reach that count.
     const current = Number(c.current_stamps || 0);
-
     if (index <= current) {
-      // uncheck -> remove one stamp (server will decrement by 1)
+      // uncheck -> remove one
       await removeStampServer(memberCode);
     } else {
-      // need to add (index - current) stamps to reach that index
-      // But to keep safe, add one stamp per click (prefer minimal change): call addStampServer once
-      // This means clicking a far-right checkbox will only add one stamp — the user should click repeatedly.
-      // Alternatively, to make it immediate, you could loop and call addStampServer multiple times.
+      // check -> add one
       await addStampServer(memberCode);
     }
-
-    // After server response in handlers, UI gets updated via state changes.
   };
 
-  // Rewards modal open: gather reward history from server or session
   const openRewardsModal = (customer) => {
     setRewardsModal({ open: true, customer });
   };
-
   const closeRewardsModal = () => setRewardsModal({ open: false, customer: null });
 
-  // CSV export
+  // CSV export - single place (Quick Actions)
   const exportToCSV = (rows, filename = "cakeroven_customers.csv") => {
     if (!rows || !rows.length) {
       alert("No data to export");
@@ -330,7 +266,6 @@ export default function AdminDashboard() {
     }
     const header = ["S.No", "Member ID", "Name", "Phone", "DOB", "Current Stamps", "Total Rewards"];
     const lines = [header.join(",")];
-
     rows.forEach((r, idx) => {
       const row = [
         idx + 1,
@@ -343,7 +278,6 @@ export default function AdminDashboard() {
       ];
       lines.push(row.join(","));
     });
-
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -353,94 +287,56 @@ export default function AdminDashboard() {
     URL.revokeObjectURL(url);
   };
 
-  // Copy CSV to clipboard
-  const copyCSVToClipboard = async (rows) => {
-    if (!rows.length) return;
-    const header = ["S.No", "Member ID", "Name", "Phone", "DOB", "Current Stamps", "Total Rewards"];
-    const lines = [header.join(",")];
-    rows.forEach((r, idx) => {
-      const row = [
-        idx + 1,
-        r.member_code || "",
-        r.name || "",
-        r.phone || "",
-        r.dob ? new Date(r.dob).toLocaleDateString("en-GB") : "",
-        r.current_stamps ?? 0,
-        r.total_rewards ?? 0,
-      ];
-      lines.push(row.join(","));
-    });
-    try {
-      await navigator.clipboard.writeText(lines.join("\n"));
-      alert("CSV copied to clipboard");
-    } catch (e) {
-      alert("Copy failed. Use export instead.");
-    }
-  };
-
-  // utility: get stamp date for UI: prefer server-provided stamp_history, fallback to session history
+  // get stamp date: prefer server stamp_history else session fallback
   const getStampDateFor = (memberCode, index) => {
     const customer = customers.find((c) => c.member_code === memberCode);
     if (!customer) return null;
-    // server-provided
     if (customer.stamp_history) {
-      // server stamp_history could be array or object. Support both.
       if (Array.isArray(customer.stamp_history)) {
         const found = customer.stamp_history.find((s) => Number(s.index) === Number(index));
         return found?.date || null;
       } else {
-        // object keyed by index
         return customer.stamp_history[index] || null;
       }
     }
-    // session fallback
     const sess = sessionHistoryRef.current[memberCode];
     return sess?.stamp_history?.[index] || null;
   };
 
-  // utility: get reward history for customer: prefer server's reward_history else session fallback
   const getRewardHistoryFor = (memberCode) => {
     const customer = customers.find((c) => c.member_code === memberCode);
     if (!customer) return [];
     if (Array.isArray(customer.reward_history)) return customer.reward_history;
-    if (customer.reward_history && typeof customer.reward_history === "object") {
-      // if object, try to convert
-      return Object.values(customer.reward_history);
-    }
+    if (customer.reward_history && typeof customer.reward_history === "object") return Object.values(customer.reward_history);
     const sess = sessionHistoryRef.current[memberCode];
     return sess?.reward_history || [];
   };
 
-  // small helper to render stamps UI: 12 checkboxes (4 per row)
-  const renderStampCheckboxes = (memberCode, currentStamps) => {
+  // Compact stamp row, 12 items in one line
+  const renderStampRowCompact = (memberCode, currentStamps) => {
     const boxes = [];
     for (let i = 1; i <= 12; i++) {
       const filled = i <= currentStamps;
       const dateStr = getStampDateFor(memberCode, i);
       boxes.push(
-        <div key={i} className="flex flex-col items-center gap-1">
+        <div key={i} className="flex flex-col items-center">
           <button
             onClick={() => toggleStampIndex(memberCode, i)}
             disabled={addingFor === memberCode || removingFor === memberCode}
-            className={`h-9 w-9 rounded-full flex items-center justify-center border transition ${
+            className={`h-7 w-7 rounded-full flex items-center justify-center border text-xs transition ${
               filled
                 ? "bg-[#fbbf24] text-[#3b1512] border-transparent shadow-sm"
-                : "bg-transparent text-[#f5e6c8] border border-[#f5e6c8]/20 hover:bg-[#f5e6c8]/6"
+                : "bg-transparent text-[#4b130f] border border-[#e9dcc0] hover:bg-[#fff7e0]"
             }`}
             title={filled ? `Checked (${formatDate(dateStr)})` : `Click to stamp #${i}`}
           >
-            <span className="text-sm font-semibold">{i}</span>
+            {i}
           </button>
-          <div className="text-[10px] text-[#f5e6c8]/70 h-4">{dateStr ? formatDate(dateStr) : ""}</div>
+          <div className="text-[10px] text-[#6b3a35]/60 h-4">{dateStr ? formatDate(dateStr) : ""}</div>
         </div>
       );
     }
-    // layout: 4columns
-    return (
-      <div className="grid grid-cols-4 gap-2 items-center">
-        {boxes}
-      </div>
-    );
+    return <div className="flex gap-2 items-center overflow-x-auto">{boxes}</div>;
   };
 
   if (!token) return null;
@@ -449,7 +345,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen w-full bg-gradient-to-b from-[#fbf3df] to-[#f2e6c7] text-[#4b130f]">
       <audio ref={rewardAudioRef} src="/reward-chime.mp3" preload="auto" />
 
-      {/* Top bar */}
+      {/* Header: NO Refresh button here (per request) */}
       <header className="w-full sticky top-0 z-40 bg-white/30 backdrop-blur-sm border-b border-[#f0dcb4]">
         <div className="max-w-full px-6 py-4 flex items-center justify-between gap-6">
           <div className="flex items-center gap-4">
@@ -478,14 +374,6 @@ export default function AdminDashboard() {
               </button>
             </nav>
 
-            {/* small refresh button */}
-            <button
-              onClick={() => fetchCustomers({ silence: false })}
-              className="px-3 py-2 rounded-full border border-[#ecd9b4] bg-white text-sm"
-            >
-              Refresh
-            </button>
-
             <button
               onClick={handleLogout}
               className="px-4 py-2 rounded-full bg-[#501914] text-[#f5e6c8] text-sm font-semibold shadow hover:bg-[#40100f] transition"
@@ -496,12 +384,10 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      {/* main */}
+      {/* Main */}
       <main className="w-full px-6 py-8">
         <div className="grid grid-cols-12 gap-6">
-          {/* left: main content */}
           <div className="col-span-12 lg:col-span-9">
-            {/* Dashboard header stats */}
             {activeTab === "dashboard" && (
               <>
                 <div className="grid grid-cols-3 gap-4 mb-6">
@@ -519,7 +405,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* customer list card */}
                 <div className="rounded-3xl bg-white shadow-lg border border-[#f3dfb1] overflow-hidden">
                   <div className="px-6 py-4 border-b border-[#f3dfb1] flex items-center justify-between gap-4">
                     <div>
@@ -527,42 +412,28 @@ export default function AdminDashboard() {
                       <p className="text-xs text-[#6b3a35]/70">Search and manage stamps directly in the table.</p>
                     </div>
 
-                    {/* Search within the customers area */}
+                    {/* Search only (no export buttons here) */}
                     <div className="flex items-center gap-2">
                       <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search name / phone / member ID"
-                        className="px-3 py-2 rounded-2xl border border-[#ecdaba] bg-white text-sm outline-none focus:ring-2 focus:ring-[#f1cf8f]/40 w-80"
+                        className="px-3 py-2 rounded-2xl border border-[#ecdaba] bg-white text-sm outline-none focus:ring-2 focus:ring-[#f1cf8f]/40 w-96"
                       />
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => exportToCSV(filtered)}
-                          className="px-3 py-2 rounded-full bg-[#501914] text-[#f5e6c8] text-sm"
-                        >
-                          Export CSV
-                        </button>
-                        <button
-                          onClick={() => copyCSVToClipboard(filtered)}
-                          className="px-3 py-2 rounded-full border border-[#ecdaba] bg-white text-sm"
-                        >
-                          Copy CSV
-                        </button>
-                      </div>
                     </div>
                   </div>
 
                   <div className="w-full overflow-x-auto">
-                    <table className="min-w-full">
+                    <table className="min-w-full text-sm">
                       <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wide">
                         <tr>
-                          <th className="px-4 py-3 text-left">S.No</th>
-                          <th className="px-4 py-3 text-left">Member ID</th>
-                          <th className="px-4 py-3 text-left">Name</th>
-                          <th className="px-4 py-3 text-left">Phone</th>
-                          <th className="px-4 py-3 text-left">DOB</th>
-                          <th className="px-4 py-3 text-left">Stamps (click to toggle)</th>
-                          <th className="px-4 py-3 text-right">Rewards</th>
+                          <th className="px-3 py-3 text-left w-10">S.No</th>
+                          <th className="px-3 py-3 text-left w-28">Member ID</th>
+                          <th className="px-3 py-3 text-left">Name</th>
+                          <th className="px-3 py-3 text-left w-36">Phone</th>
+                          <th className="px-3 py-3 text-left w-28">DOB</th>
+                          <th className="px-3 py-3 text-left">Stamps</th>
+                          <th className="px-3 py-3 text-right w-28">Rewards</th>
                         </tr>
                       </thead>
 
@@ -578,21 +449,22 @@ export default function AdminDashboard() {
                         ) : (
                           filtered.map((c, idx) => (
                             <tr key={c.member_code} className={idx % 2 === 0 ? "bg-[#fffaf0]" : "bg-[#fff4e6]"}>
-                              <td className="px-4 py-4 text-sm text-[#6b3a35]/80">{idx + 1}</td>
-                              <td className="px-4 py-4 text-sm font-mono text-[#3b1512]">{c.member_code}</td>
-                              <td className="px-4 py-4 text-sm text-[#3b1512]">{c.name}</td>
-                              <td className="px-4 py-4 text-sm text-[#6b3a35]">{c.phone}</td>
-                              <td className="px-4 py-4 text-sm text-[#6b3a35]/80">{c.dob ? new Date(c.dob).toLocaleDateString("en-GB") : "—"}</td>
+                              <td className="px-3 py-3 text-xs text-[#6b3a35]/80">{idx + 1}</td>
+                              <td className="px-3 py-3 font-mono text-xs text-[#3b1512]">{c.member_code}</td>
+                              <td className="px-3 py-3 text-sm text-[#3b1512]">{c.name}</td>
+                              <td className="px-3 py-3 text-sm text-[#6b3a35]">{c.phone}</td>
+                              <td className="px-3 py-3 text-sm text-[#6b3a35]/80">{c.dob ? new Date(c.dob).toLocaleDateString("en-GB") : "—"}</td>
 
-                              <td className="px-4 py-4">
-                                {renderStampCheckboxes(c.member_code, Number(c.current_stamps || 0))}
+                              <td className="px-3 py-3">
+                                {/* Compact single-line 12 stamps */}
+                                {renderStampRowCompact(c.member_code, Number(c.current_stamps || 0))}
                               </td>
 
-                              <td className="px-4 py-4 text-right">
+                              <td className="px-3 py-3 text-right">
                                 <div className="flex items-center justify-end gap-2">
                                   <button
                                     onClick={() => openRewardsModal(c)}
-                                    className="px-3 py-1.5 rounded-full bg-[#fff4d8] text-sm font-semibold border border-[#f1cf8f]"
+                                    className="px-2 py-1 rounded-full bg-[#fff4d8] text-sm font-semibold border border-[#f1cf8f]"
                                   >
                                     {c.total_rewards ?? 0} 🎁
                                   </button>
@@ -608,7 +480,6 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {/* Insights tab */}
             {activeTab === "insights" && (
               <div className="space-y-6">
                 <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
@@ -619,7 +490,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Placeholder charts area - you can plug Chart.js / Recharts later */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="h-44 rounded-lg bg-[#fffaf0] border border-[#f3e6c2] flex items-center justify-center text-sm text-[#6b3a35]/80">
                       Stamps over time (chart placeholder)
@@ -633,9 +503,8 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          {/* right: side column */}
+          {/* Right column */}
           <aside className="col-span-12 lg:col-span-3 space-y-6">
-            {/* Birthdays */}
             <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
               <div className="flex items-center gap-3 mb-2">
                 <div className="rounded-full bg-[#fff3d9] p-2">
@@ -664,7 +533,6 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* Almost at reward */}
             <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
               <p className="text-sm font-semibold text-[#3b1512] mb-2">Almost at reward</p>
               <p className="text-xs text-[#6b3a35]/70 mb-3">Customers with 9–11 stamps (most stamps first)</p>
@@ -697,7 +565,7 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            {/* Quick actions */}
+            {/* Quick actions: Refresh & Export CSV only */}
             <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
               <p className="text-sm font-semibold text-[#3b1512] mb-2">Quick actions</p>
               <div className="flex flex-col gap-2">
@@ -712,12 +580,6 @@ export default function AdminDashboard() {
                   className="w-full px-3 py-2 rounded-lg bg-[#501914] text-white text-sm hover:bg-[#40100f]"
                 >
                   Export visible → CSV
-                </button>
-                <button
-                  onClick={() => copyCSVToClipboard(filtered)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#ecd9b4] bg-white text-sm"
-                >
-                  Copy CSV to clipboard
                 </button>
               </div>
             </div>
@@ -740,7 +602,6 @@ export default function AdminDashboard() {
             <div className="mt-3">
               <p className="text-sm font-semibold mb-2">Rewards history</p>
               <div className="rounded-lg bg-[#fffaf0] p-3 border border-[#f3e6c2]">
-                {/* server-provided or session fallback */}
                 {(() => {
                   const arr = getRewardHistoryFor(rewardsModal.customer.member_code);
                   if (!arr || !arr.length) {
@@ -788,4 +649,14 @@ export default function AdminDashboard() {
       )}
     </div>
   );
+
+  // helper inside component to get reward history (defined last to use local functions)
+  function getRewardHistoryFor(memberCode) {
+    const customer = customers.find((c) => c.member_code === memberCode);
+    if (!customer) return [];
+    if (Array.isArray(customer.reward_history)) return customer.reward_history;
+    if (customer.reward_history && typeof customer.reward_history === "object") return Object.values(customer.reward_history);
+    const sess = sessionHistoryRef.current[memberCode];
+    return sess?.reward_history || [];
+  }
 }
