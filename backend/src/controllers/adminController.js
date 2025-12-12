@@ -131,7 +131,7 @@ exports.addStamp = async (req, res) => {
       // store as 12 when current is 0 (means it was the 12th before reset)
       const recordedStampNumber = current === 0 ? 12 : current;
       await client.query(
-        `INSERT INTO stamp_events (user_id, stamp_number, stamped_at) VALUES ($1, $2, NOW())`,
+        `INSERT INTO stamp_history (user_id, stamp_number, stamped_at) VALUES ($1, $2, NOW())`,
         [user.id, recordedStampNumber]
       );
 
