@@ -69,114 +69,170 @@ exports.getCustomers = async (req, res) => {
   }
 };
 
-exports.addStamp = async (req, res) => {
+// --- START: REPLACE addStamp / removeStamp in adminController.js ---
+
+/**
+ * Add one stamp to a user's account.
+ * - Uses a transaction to update loyalty_accounts and insert a stamp_events record.
+ * - If stamps hit 12 -> resets to 0 and increments rewards.
+ */
+exports.addStamp = async function (req, res) {
+  const { memberCode } = req.body;
+  if (!memberCode) return res.status(400).json({ message: "Missing memberCode" });
+
+  const client = await db.getClient(); // if your db helper exposes getClient() with client.query
+  // If db.getClient doesn't exist in your helper, use db.query and remove client usage & transactions.
   try {
-    const holiday = getIstHolidayStatus();
-    if (holiday.blocked) return res.status(403).json({ message: holiday.message });
+    await client.query("BEGIN");
 
-    const { memberCode } = req.body;
-    if (!memberCode) return res.status(400).json({ message: "memberCode required" });
-
-    const userRes = await db.query(
-      `SELECT u.id, u.member_code, u.name, u.phone, COALESCE(l.current_stamps,0) AS current_stamps, COALESCE(l.total_rewards,0) AS total_rewards
+    // Get user and current stamps
+    const userRes = await client.query(
+      `SELECT u.id as user_id, la.current_stamps, la.total_rewards
        FROM users u
-       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-       WHERE u.member_code = $1 LIMIT 1`,
+       LEFT JOIN loyalty_accounts la ON la.user_id = u.id
+       WHERE u.member_code = $1
+       LIMIT 1`,
       [memberCode]
     );
 
-    if (userRes.rows.length === 0) return res.status(404).json({ message: "User not found" });
-
-    const data = userRes.rows[0];
-    let current = Number(data.current_stamps || 0);
-    let reward = Number(data.total_rewards || 0);
-
-    current += 1;
-    if (current >= 12) {
-      current = 0;
-      reward += 1;
-      // Insert reward event
-      await db.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [data.id]);
+    if (!userRes.rows || userRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Member not found" });
     }
 
-    // update loyalty account (create if not exists)
-    await db.query(
-      `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (user_id) DO UPDATE SET current_stamps = $2, total_rewards = $3`,
-      [data.id, current, reward]
+    const row = userRes.rows[0];
+    const userId = row.user_id;
+    const currentStamps = Number(row.current_stamps || 0);
+    const currentRewards = Number(row.total_rewards || 0);
+
+    // Determine new stamps / rewards
+    let newStamps = currentStamps + 1;
+    let newRewards = currentRewards;
+    let justAwardedReward = false;
+
+    if (newStamps > 11) {
+      // Completed 12th stamp -> award reward and reset stamps to 0
+      newStamps = 0;
+      newRewards = currentRewards + 1;
+      justAwardedReward = true;
+    }
+
+    // Update loyalty_accounts (INSERT if not exists)
+    const upsertAccountSql = `
+      INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards, updated_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET current_stamps = EXCLUDED.current_stamps, total_rewards = EXCLUDED.total_rewards, updated_at = NOW()
+      RETURNING *`;
+    const upsertRes = await client.query(upsertAccountSql, [userId, newStamps, newRewards]);
+
+    // Insert stamp event record
+    // Note: correct SQL keyword is VALUES
+    await client.query(
+      `INSERT INTO stamp_events (user_id, stamp_number, created_at)
+       VALUES ($1, $2, NOW())`,
+      [userId, newStamps === 0 ? 12 : newStamps] // if newStamps reset -> record 12 as final stamp
     );
 
-    // record stamp event
-    await db.query(`INSERT INTO stamp_events (user_id, stamp_number, stamped_at) VALUES ($1, $2, NOW())`, [data.id, current === 0 ? 12 : current,]);
+    await client.query("COMMIT");
 
-    return res.json({
-      message: "Stamp updated",
-      card: { memberCode: data.member_code, name: data.name, phone: data.phone, currentStamps: current, totalRewards: reward }
-    });
-  } catch (error) {
-    console.error("Stamp error:", error);
-    res.status(500).json({ message: "Server error" });
+    // Build a response similar to what your frontend expects
+    const responseCard = {
+      currentStamps: newStamps,
+      totalRewards: newRewards,
+    };
+
+    return res.json({ success: true, card: responseCard, justAwardedReward });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch (e) { /* ignore */ }
+    console.error("addStamp error:", err);
+    return res.status(500).json({ message: "Failed to add stamp", error: err.message });
+  } finally {
+    try { client.release(); } catch (e) { /* ignore */ }
   }
 };
 
-exports.removeStamp = async (req, res) => {
+/**
+ * Remove (undo) last stamp for a user.
+ * It will:
+ * - find the last stamp_events entry for that user and delete it,
+ * - recalc the current_stamps (and total_rewards if needed),
+ * - return the updated card info.
+ */
+exports.removeStamp = async function (req, res) {
+  const { memberCode } = req.body;
+  if (!memberCode) return res.status(400).json({ message: "Missing memberCode" });
+
+  const client = await db.getClient();
   try {
-    const holiday = getIstHolidayStatus();
-    if (holiday.blocked) return res.status(403).json({ message: holiday.message });
+    await client.query("BEGIN");
 
-    const { memberCode } = req.body;
-    if (!memberCode) return res.status(400).json({ message: "memberCode is required" });
-
-    const result = await db.query(
-      `SELECT u.id, u.member_code, u.name, u.phone, u.dob, COALESCE(l.current_stamps,0) AS current_stamps, COALESCE(l.total_rewards,0) AS total_rewards
+    const userRes = await client.query(
+      `SELECT u.id as user_id, la.current_stamps, la.total_rewards
        FROM users u
-       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-       WHERE u.member_code = $1 LIMIT 1`,
+       LEFT JOIN loyalty_accounts la ON la.user_id = u.id
+       WHERE u.member_code = $1
+       LIMIT 1`,
       [memberCode]
     );
 
-    if (result.rows.length === 0) return res.status(404).json({ message: "Member not found" });
-
-    const row = result.rows[0];
-    let current = Number(row.current_stamps || 0);
-    let rewards = Number(row.total_rewards || 0);
-
-    if (current === 0 && rewards === 0) {
-      return res.json({
-        message: "Nothing to undo",
-        card: { memberCode: row.member_code, name: row.name, phone: row.phone, dob: row.dob, currentStamps: current, totalRewards: rewards }
-      });
+    if (!userRes.rows || userRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Member not found" });
     }
 
-    if (current > 0) {
-      current -= 1;
-      // remove last stamp_events item
-      await db.query(
-        `DELETE FROM stamp_events WHERE user_id = $1 AND stamp_number = $2 RETURNING id`,
-        [row.id, current + 1]
-      );
-    } else if (current === 0 && rewards > 0) {
-      // rollback a reward -> set to 11 stamps and decrement rewards
-      current = 11;
-      rewards -= 1;
-      // remove latest reward record
-      await db.query(`DELETE FROM rewards WHERE user_id = $1 AND issued_at = (SELECT issued_at FROM rewards WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1)`, [row.id]);
-    }
+    const row = userRes.rows[0];
+    const userId = row.user_id;
+    let currentStamps = Number(row.current_stamps || 0);
+    let currentRewards = Number(row.total_rewards || 0);
 
-    await db.query(
-      `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (user_id) DO UPDATE SET current_stamps = $2, total_rewards = $3`,
-      [row.id, current, rewards]
+    // Find last stamp event for this user
+    const lastEventRes = await client.query(
+      `SELECT id, stamp_number FROM stamp_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [userId]
     );
 
-    return res.json({
-      message: "Stamp undone",
-      card: { memberCode: row.member_code, name: row.name, phone: row.phone, dob: row.dob, currentStamps: current, totalRewards: rewards }
-    });
-  } catch (error) {
-    console.error("Remove stamp error:", error);
-    res.status(500).json({ message: "Server error" });
+    if (!lastEventRes.rows || lastEventRes.rows.length === 0) {
+      // nothing to undo
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "No stamp events to remove" });
+    }
+
+    const lastEvent = lastEventRes.rows[0];
+
+    // Remove that event
+    await client.query(`DELETE FROM stamp_events WHERE id = $1`, [lastEvent.id]);
+
+    // Now recalc: if last event was a reward (i.e. stamp_number === 12), then the account must have been reset
+    // We'll compute new currentStamps and newRewards conservatively:
+    if (lastEvent.stamp_number === 12) {
+      // The previous state before that reward should have been 11 stamps and rewards-1
+      currentStamps = 11;
+      currentRewards = Math.max(0, currentRewards - 1);
+    } else {
+      // Normal case: just decrement stamps (but guarded >=0)
+      currentStamps = Math.max(0, currentStamps - 1);
+    }
+
+    // Update loyalty_accounts
+    await client.query(
+      `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET current_stamps = EXCLUDED.current_stamps, total_rewards = EXCLUDED.total_rewards, updated_at = NOW()`,
+      [userId, currentStamps, currentRewards]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({ success: true, card: { currentStamps, totalRewards: currentRewards } });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch (e) { /* ignore */ }
+    console.error("removeStamp error:", err);
+    return res.status(500).json({ message: "Failed to remove stamp", error: err.message });
+  } finally {
+    try { client.release(); } catch (e) { /* ignore */ }
   }
 };
+
+// --- END: REPLACE addStamp / removeStamp ---
