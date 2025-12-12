@@ -1,33 +1,54 @@
 // backend/src/config/db.js
-// Postgres pool wrapper for Render / Railway
-// Make sure DATABASE_URL is set in your environment.
-
 const { Pool } = require("pg");
 
-const connectionString = process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/postgres";
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error("ERROR: DATABASE_URL is not set in environment");
+  // still export a pool to fail loudly on startup
+}
 
 const pool = new Pool({
   connectionString,
-  // If your host requires SSL, enable while keeping rejectUnauthorized false:
+  // optional: adjust SSL for cloud providers
   // ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-  max: 12,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
 });
 
 pool.on("error", (err) => {
-  console.error("Unexpected Postgres pool error:", err);
+  console.error("Unexpected idle client error", err);
 });
 
 /**
- * Basic query helper (delegates to pool.query)
- * Use: const { query } = require('./config/db'); await query(sql, params)
+ * Simple query wrapper
  */
 async function query(text, params) {
   return pool.query(text, params);
 }
 
+/**
+ * Run a function with a client inside a transaction.
+ * fn must be async and receive a client.
+ */
+async function withClient(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (e) {
+      console.error("Rollback error:", e);
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   pool,
   query,
+  withClient,
 };
