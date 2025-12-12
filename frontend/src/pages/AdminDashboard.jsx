@@ -3,6 +3,16 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
 
+/**
+ * AdminDashboard.jsx — Desktop-first, full-screen admin dashboard
+ *
+ * Notes:
+ * - Keeps the same API calls and behaviour as your original file.
+ * - Designed to fill the entire viewport on desktop (no centered narrow container).
+ * - Uses Tailwind CSS utility classes for layout and style.
+ * - Put `reward-chime.mp3` and `cakeroven-logo.png` in /public as before.
+ */
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [customers, setCustomers] = useState([]);
@@ -106,15 +116,18 @@ export default function AdminDashboard() {
       return;
     }
 
+    const controller = new AbortController();
+
     const fetchCustomers = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/admin/customers`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          signal: controller.signal,
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) {
@@ -132,6 +145,7 @@ export default function AdminDashboard() {
         setCustomers(data.customers || []);
         setFiltered(data.customers || []);
       } catch (err) {
+        if (err.name === "AbortError") return;
         console.error(err);
         alert("Server error");
       } finally {
@@ -140,6 +154,7 @@ export default function AdminDashboard() {
     };
 
     fetchCustomers();
+    return () => controller.abort();
   }, [navigate, token]);
 
   // ---------- search ----------
@@ -171,7 +186,7 @@ export default function AdminDashboard() {
     if (!token) return;
     setAddingFor(memberCode);
 
-    // find current details before update
+    // optimistic UI: keep previous values and update after response
     const current = customers.find((c) => c.member_code === memberCode);
     const prevStamps = Number(current?.current_stamps || 0);
     const prevRewards = Number(current?.total_rewards || 0);
@@ -186,23 +201,18 @@ export default function AdminDashboard() {
         body: JSON.stringify({ memberCode }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         alert(data.message || "Could not update stamp");
         return;
       }
 
-      const newStamps = data.card.currentStamps;
-      const newRewards = data.card.totalRewards;
+      const newStamps = Number(data.card.currentStamps ?? data.card.current_stamps ?? 0);
+      const newRewards = Number(data.card.totalRewards ?? data.card.total_rewards ?? 0);
 
       // check if this action completed a reward: 11 -> 0 and reward +1
-      if (
-        prevStamps === 11 &&
-        newStamps === 0 &&
-        newRewards === prevRewards + 1
-      ) {
-        // set celebration info
+      if (prevStamps === 11 && newStamps === 0 && newRewards === prevRewards + 1) {
         setCelebration({
           memberCode,
           name: current?.name,
@@ -210,18 +220,17 @@ export default function AdminDashboard() {
           rewards: newRewards,
         });
 
-        // play sound
         if (rewardAudioRef.current) {
           try {
             rewardAudioRef.current.currentTime = 0;
             rewardAudioRef.current.play().catch(() => {});
           } catch (e) {
-            console.warn("Audio play blocked:", e);
+            // ignore audio autoplay errors
           }
         }
       }
 
-      // update local state
+      // update local state using functional update
       setCustomers((prev) =>
         prev.map((c) =>
           c.member_code === memberCode
@@ -255,20 +264,23 @@ export default function AdminDashboard() {
         body: JSON.stringify({ memberCode }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         alert(data.message || "Could not undo stamp");
         return;
       }
 
+      const newStamps = Number(data.card.currentStamps ?? data.card.current_stamps ?? 0);
+      const newRewards = Number(data.card.totalRewards ?? data.card.total_rewards ?? 0);
+
       setCustomers((prev) =>
         prev.map((c) =>
           c.member_code === memberCode
             ? {
                 ...c,
-                current_stamps: data.card.currentStamps,
-                total_rewards: data.card.totalRewards,
+                current_stamps: newStamps,
+                total_rewards: newRewards,
               }
             : c
         )
@@ -286,19 +298,292 @@ export default function AdminDashboard() {
   const { totalUsers, totalStamps, totalRewards, birthdaysToday } = todayInfo;
 
   return (
-    <div className="min-h-screen bg-[#f5e6c8] flex flex-col items-center p-4 relative">
-      {/* reward sound (put reward-chime.mp3 in /public) */}
+    <div className="min-h-screen w-full bg-gradient-to-b from-[#fbf3df] to-[#f2e6c7] text-[#4b130f]">
+      {/* audio element */}
       <audio ref={rewardAudioRef} src="/reward-chime.mp3" preload="auto" />
+
+      {/* Topbar (sticky) */}
+      <header className="w-full sticky top-0 z-40 backdrop-blur-sm bg-white/30 border-b border-[#f0dcb4]/60">
+        <div className="max-w-full px-6 py-4 flex items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-white shadow-sm flex items-center justify-center overflow-hidden">
+                <img src="/cakeroven-logo.png" alt="CakeRoven" className="h-full w-full object-cover" />
+              </div>
+              <div>
+                <p className="text-xs text-[#6b3a35]">CakeRoven Admin</p>
+                <p className="text-base font-semibold text-[#3b1512]">Welcome, {adminName}</p>
+              </div>
+            </div>
+
+            <div className="ml-6 hidden lg:flex items-center gap-4">
+              <div className="px-3 py-2 rounded-lg bg-[#501914] text-[#f7e6c8] text-sm font-medium shadow-sm">
+                Dashboard
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-white/80 text-[#4b130f] text-sm border border-[#f3e1be]">
+                Customers & Stamps
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden md:block">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name / phone / member ID"
+                className="px-3 py-2 rounded-lg w-72 border border-[#ecdaba] bg-white text-sm outline-none focus:ring-2 focus:ring-[#f1cf8f]/40"
+              />
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 rounded-full bg-[#501914] text-[#f5e6c8] text-sm font-semibold shadow hover:bg-[#40100f] transition"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main content: full width grid */}
+      <main className="w-full px-6 py-8">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Left / Primary area (big) */}
+          <section className="col-span-12 lg:col-span-8">
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
+                <p className="text-xs text-[#6b3a35] uppercase tracking-wide">Total members</p>
+                <p className="text-2xl font-bold mt-1">{totalUsers}</p>
+              </div>
+              <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
+                <p className="text-xs text-[#6b3a35] uppercase tracking-wide">Stamps given</p>
+                <p className="text-2xl font-bold mt-1">{totalStamps}</p>
+              </div>
+              <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
+                <p className="text-xs text-[#6b3a35] uppercase tracking-wide">Rewards unlocked</p>
+                <p className="text-2xl font-bold mt-1">{totalRewards}</p>
+              </div>
+            </div>
+
+            {/* Search (mobile visible) */}
+            <div className="mb-4 lg:hidden">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name / phone / member ID"
+                className="w-full px-3 py-2 rounded-2xl border border-[#ecdaba] bg-white text-sm outline-none"
+              />
+            </div>
+
+            {/* Table card */}
+            <div className="rounded-3xl bg-white shadow-lg border border-[#f3dfb1] overflow-hidden">
+              {/* table header area */}
+              <div className="px-6 py-4 border-b border-[#f3dfb1] flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#3b1512]">Customers</h3>
+                  <p className="text-xs text-[#6b3a35]/70">Click +1 after bills of ₹500+. Use Undo to fix mistakes.</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="text-sm text-[#6b3a35]/80">Showing</div>
+                  <div className="px-3 py-1 rounded-full bg-[#fff6e6] text-sm font-semibold border border-[#f1dfb9]">
+                    {filtered.length}
+                  </div>
+                </div>
+              </div>
+
+              {/* table */}
+              <div className="w-full overflow-x-auto">
+                <table className="min-w-full">
+                  <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wide">
+                    <tr>
+                      <th className="px-4 py-3 text-left">S.No</th>
+                      <th className="px-4 py-3 text-left">Member ID</th>
+                      <th className="px-4 py-3 text-left">Name</th>
+                      <th className="px-4 py-3 text-left">Phone</th>
+                      <th className="px-4 py-3 text-left">DOB</th>
+                      <th className="px-4 py-3 text-left">Stamps</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-8 text-center text-[#6b3a35]">
+                          Loading customers…
+                        </td>
+                      </tr>
+                    ) : filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-8 text-center text-[#6b3a35]/70">
+                          No customers found.
+                        </td>
+                      </tr>
+                    ) : (
+                      filtered.map((c, index) => {
+                        const stamps = Number(c.current_stamps || 0);
+                        const rewards = Number(c.total_rewards || 0);
+                        const progress = Math.max(0, Math.min(12, stamps));
+
+                        return (
+                          <tr
+                            key={c.member_code}
+                            className={index % 2 === 0 ? "bg-[#fffaf0]" : "bg-[#fff4e6]"}
+                          >
+                            <td className="px-4 py-4 text-sm text-[#6b3a35]/80">{index + 1}</td>
+                            <td className="px-4 py-4 text-sm font-mono text-[#3b1512]">{c.member_code}</td>
+                            <td className="px-4 py-4 text-sm text-[#3b1512]">{c.name}</td>
+                            <td className="px-4 py-4 text-sm text-[#6b3a35]">{c.phone}</td>
+                            <td className="px-4 py-4 text-sm text-[#6b3a35]/80">{formatDate(c.dob)}</td>
+
+                            <td className="px-4 py-4">
+                              <div className="w-52 max-w-full flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-[12px] font-semibold text-[#92400e]">
+                                    {stamps}/12
+                                  </span>
+                                  <span className="text-[12px] text-[#6b3a35]/70">
+                                    Rewards <span className="font-semibold">{rewards}</span>
+                                  </span>
+                                </div>
+                                <div className="h-2 rounded-full bg-[#3b0f0c]/20 overflow-hidden">
+                                  <div
+                                    className="h-full bg-[#fbbf24] transition-all"
+                                    style={{ width: `${(progress / 12) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => handleRemoveStamp(c.member_code)}
+                                  disabled={removingFor === c.member_code}
+                                  className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#cfae85] text-[#3b1512] bg-white/90 hover:bg-white disabled:opacity-60"
+                                >
+                                  {removingFor === c.member_code ? "Undoing…" : "Undo"}
+                                </button>
+                                <button
+                                  onClick={() => handleAddStamp(c.member_code)}
+                                  disabled={addingFor === c.member_code}
+                                  className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[#501914] text-[#f5e6c8] hover:bg-[#40100f] disabled:opacity-60 shadow-sm"
+                                >
+                                  {addingFor === c.member_code ? "Updating…" : "+1"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          {/* Right / Secondary column */}
+          <aside className="col-span-12 lg:col-span-4 space-y-6">
+            {/* Birthday card */}
+            <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="rounded-full bg-[#fff3d9] p-2">
+                  <span className="text-xl">🎂</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[#3b1512]">Today's CakeRoven birthdays</p>
+                  <p className="text-xs text-[#6b3a35]/70">Celebrate with a special note or offer.</p>
+                </div>
+              </div>
+
+              {birthdaysToday.length === 0 ? (
+                <p className="text-sm text-[#6b3a35]/70 mt-2">No member birthdays today.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {birthdaysToday.map((b) => (
+                    <li key={b.member_code} className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold">{b.name}</div>
+                        <div className="text-xs font-mono text-[#6b3a35]/70">{b.member_code} • {b.phone}</div>
+                      </div>
+                      <div className="text-xs text-[#6b3a35]/60">{formatDate(b.dob)}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Almost reward */}
+            <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-sm font-semibold text-[#3b1512]">Almost at reward</p>
+                  <p className="text-xs text-[#6b3a35]/70">Customers with 9–11 stamps (most stamps first)</p>
+                </div>
+              </div>
+
+              {almostReward.length === 0 ? (
+                <p className="text-sm text-[#6b3a35]/70">No members between 9 and 11 stamps.</p>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  {almostReward.slice(0, 6).map((c) => {
+                    const stamps = Number(c.current_stamps || 0);
+                    return (
+                      <div key={c.member_code} className="flex items-center justify-between bg-[#fffaf0] p-2 rounded-lg border border-[#f3e6c2]">
+                        <div>
+                          <div className="text-sm font-semibold">{c.name}</div>
+                          <div className="text-xs font-mono text-[#6b3a35]/70">{c.member_code}</div>
+                        </div>
+                        <div className="text-sm">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-[12px] font-semibold text-[#92400e]">
+                            {stamps}/12
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="mt-3 text-xs text-[#6b3a35]/60">
+                Tip: focus on these members for special reminders or offers — they're closest to unlocking a free CakeRoven treat 🎁
+              </p>
+            </div>
+
+            {/* Quick actions */}
+            <div className="rounded-2xl bg-white shadow-md p-4 border border-[#f3dfb1]">
+              <p className="text-sm font-semibold text-[#3b1512] mb-2">Quick actions</p>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => { window.open("/card", "_blank"); }}
+                  className="w-full px-3 py-2 rounded-lg bg-[#501914] text-white text-sm font-semibold hover:bg-[#40100f] transition"
+                >
+                  Open sample stamp card
+                </button>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="w-full px-3 py-2 rounded-lg border border-[#ecd9b4] text-sm text-[#3b1512] bg-white hover:bg-[#fff9ee] transition"
+                >
+                  Refresh data
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
 
       {/* Celebration overlay when 12th stamp is completed */}
       {celebration && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-          {/* simple confetti-like bits */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          {/* confetti bits (CSS keyframes recommended in global CSS) */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             {Array.from({ length: 25 }).map((_, i) => (
               <span
                 key={i}
-                className="absolute w-1.5 h-4 rounded-sm bg-[#fbbf24] animate-[confetti_900ms_ease-out_forwards]"
+                className="absolute w-1.5 h-4 rounded-sm bg-[#fbbf24] animate-confetti"
                 style={{
                   left: `${Math.random() * 100}%`,
                   top: "-10px",
@@ -309,351 +594,42 @@ export default function AdminDashboard() {
             ))}
           </div>
 
-          <div className="relative z-50 max-w-sm w-full mx-4 rounded-3xl bg-[#501914] text-[#f5e6c8] shadow-[0_20px_60px_rgba(0,0,0,0.7)] p-5 border border-[#fcd9a7]">
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-3xl">🎉</span>
-              <div>
-                <p className="text-sm font-semibold tracking-wide uppercase text-[#f5e6c8]/80">
-                  Reward unlocked!
-                </p>
-                <p className="text-xs text-[#f5e6c8]/70">
-                  One customer just completed 12 stamps.
-                </p>
+          <div className="relative z-60 max-w-lg w-full mx-4 rounded-3xl bg-[#501914] text-[#f5e6c8] shadow-[0_20px_60px_rgba(0,0,0,0.7)] p-6 border border-[#fcd9a7]">
+            <div className="flex items-start gap-4">
+              <div className="text-4xl">🎉</div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold tracking-wide uppercase text-[#f5e6c8]/80">Reward unlocked!</p>
+                <p className="text-lg font-bold mt-1">{celebration.name || "Member"} completed 12 stamps</p>
+
+                <div className="mt-3 text-sm">
+                  <p>
+                    Member <span className="font-mono">{celebration.memberCode}</span> has unlocked a complimentary CakeRoven treat.
+                  </p>
+                  <p className="mt-1 text-sm text-[#f5e6c8]/80">
+                    Total rewards earned so far: <span className="font-semibold">{celebration.rewards ?? "--"}</span>
+                  </p>
+                </div>
+
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={() => setCelebration(null)}
+                    className="px-4 py-2 rounded-full bg-[#f5e6c8] text-[#501914] font-semibold shadow hover:bg-[#ffe9c7] transition"
+                  >
+                    Got it
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="mt-2 mb-3 space-y-1 text-sm">
-              <p className="font-semibold">
-                {celebration.name || "Member"}{" "}
-                <span className="font-mono text-xs bg-[#f5e6c8]/10 px-2 py-0.5 rounded-full border border-[#f5e6c8]/30 ml-1">
-                  {celebration.memberCode}
-                </span>
-              </p>
-              <p className="text-xs text-[#f5e6c8]/80">
-                has unlocked a complimentary CakeRoven treat. Please inform the
-                customer and mark their reward at the counter.
-              </p>
-              <p className="text-xs text-[#f5e6c8]/70 mt-1">
-                Total rewards earned so far:{" "}
-                <span className="font-semibold">
-                  {celebration.rewards ?? "--"}
-                </span>
-              </p>
-            </div>
-
-            <div className="flex justify-end mt-3">
-              <button
-                onClick={() => setCelebration(null)}
-                className="px-4 py-1.5 rounded-full bg-[#f5e6c8] text-[#501914] text-xs font-semibold shadow-[0_4px_12px_rgba(0,0,0,0.5)] hover:bg-[#ffe9c7] active:scale-[0.97] transition"
-              >
-                Got it
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="w-full max-w-6xl space-y-4">
-        {/* Top bar */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-[#501914] flex items-center justify-center shadow-md">
-              <div className="w-9 h-9 rounded-full overflow-hidden bg-[#f5e6c8]">
-                <img
-                  src="/cakeroven-logo.png"
-                  alt="CakeRoven"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-[#501914]/70 tracking-wide">
-                CakeRoven Admin
-              </p>
-              <p className="text-sm font-semibold text-[#501914]">
-                Welcome, {adminName}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={handleLogout}
-            className="self-start sm:self-auto px-4 py-1.5 rounded-full bg-[#501914] text-[#f5e6c8] text-xs font-semibold shadow-[0_4px_10px_rgba(0,0,0,0.4)] hover:bg-[#3f120f] transition"
-          >
-            Logout
-          </button>
-        </div>
-
-        {/* Stats + birthdays */}
-        <div className="grid gap-4 md:grid-cols-[2fr,1.1fr]">
-          <div className="bg-[#501914] rounded-3xl p-4 text-[#f5e6c8] shadow-[0_0_30px_rgba(0,0,0,0.45)]">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  Customers &amp; stamps
-                </h2>
-                <p className="text-[11px] text-[#f5e6c8]/80">
-                  Search by name, phone or member ID.
-                </p>
-              </div>
-              <p className="hidden md:block text-[11px] text-[#f5e6c8]/60 text-right">
-                Click <span className="font-semibold">+1</span> after bills of{" "}
-                <span className="font-semibold">₹500+</span>. Use{" "}
-                <span className="font-semibold">Undo</span> to fix mistakes.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 mb-4 text-[#501914]">
-              <div className="rounded-2xl bg-[#f5e6c8]/95 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-[#501914]/70">
-                  Total members
-                </p>
-                <p className="text-lg font-semibold">{totalUsers}</p>
-              </div>
-              <div className="rounded-2xl bg-[#f5e6c8]/95 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-[#501914]/70">
-                  Stamps given
-                </p>
-                <p className="text-lg font-semibold">{totalStamps}</p>
-              </div>
-              <div className="rounded-2xl bg-[#f5e6c8]/95 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-[#501914]/70">
-                  Rewards unlocked
-                </p>
-                <p className="text-lg font-semibold">{totalRewards}</p>
-              </div>
-            </div>
-
-            <input
-              type="text"
-              placeholder="Search: name / phone / CR ID"
-              className="w-full p-3 rounded-2xl border border-[#f5e6c8]/40 outline-none bg-[#f5e6c8] text-[#501914] text-sm focus:border-[#501914]/60"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-3">
-            {/* Birthday card */}
-            <div className="bg-white/90 rounded-3xl p-4 shadow-[0_0_25px_rgba(0,0,0,0.18)] border border-[#f5e6c8]">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-lg">🎂</span>
-                <p className="text-sm font-semibold text-[#501914]">
-                  Today&apos;s CakeRoven birthdays
-                </p>
-              </div>
-              {birthdaysToday.length === 0 ? (
-                <p className="text-xs text-[#501914]/70">
-                  No member birthdays today.
-                </p>
-              ) : (
-                <ul className="mt-1 space-y-1 text-xs text-[#501914]">
-                  {birthdaysToday.map((b) => (
-                    <li key={b.member_code}>
-                      <span className="font-mono text-[11px] mr-1">
-                        {b.member_code}
-                      </span>
-                      – {b.name} ({b.phone})
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Main sheet (left) + "almost reward" sheet (right) */}
-        <div className="grid gap-4 lg:grid-cols-[2.1fr,1fr] items-start">
-          {/* LEFT: big customer table */}
-          <div className="bg-white/95 rounded-3xl shadow-[0_0_35px_rgba(0,0,0,0.20)] overflow-hidden border border-[#f3dcaa]">
-            {loading ? (
-              <div className="p-6 text-center text-[#501914] text-sm">
-                Loading customers…
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="p-6 text-center text-[#501914]/70 text-sm">
-                No customers found.
-              </div>
-            ) : (
-              <div className="w-full overflow-x-auto">
-                <table className="min-w-full text-sm text-left">
-                  <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wide">
-                    <tr>
-                      <th className="px-4 py-3">S.No</th>
-                      <th className="px-4 py-3">Member ID</th>
-                      <th className="px-4 py-3">Name</th>
-                      <th className="px-4 py-3">Phone</th>
-                      <th className="px-4 py-3">Date of birth</th>
-                      <th className="px-4 py-3">Stamps (0–12)</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((c, index) => {
-                      const stamps = Number(c.current_stamps || 0);
-                      const rewards = Number(c.total_rewards || 0);
-                      const progress = Math.max(0, Math.min(12, stamps));
-
-                      return (
-                        <tr
-                          key={c.member_code}
-                          className={
-                            index % 2 === 0
-                              ? "bg-[#fef7e8]"
-                              : "bg-[#f9ecce]"
-                          }
-                        >
-                          <td className="px-4 py-3 text-xs text-[#501914]/80">
-                            {index + 1}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-xs font-semibold text-[#501914]">
-                            {c.member_code}
-                          </td>
-                          <td className="px-4 py-3 text-[#501914]">
-                            {c.name}
-                          </td>
-                          <td className="px-4 py-3 text-[#501914]/90">
-                            {c.phone}
-                          </td>
-                          <td className="px-4 py-3 text-[#501914]/80 text-xs">
-                            {formatDate(c.dob)}
-                          </td>
-
-                          {/* Stamps cell */}
-                          <td className="px-4 py-3">
-                            <div className="w-40 max-w-full flex flex-col gap-1">
-                              <div className="flex items-center justify-between">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-[11px] font-semibold text-[#92400e]">
-                                  {stamps}/12
-                                </span>
-                                <span className="text-[11px] text-[#501914]/70">
-                                  Rewards{" "}
-                                  <span className="font-semibold">
-                                    {rewards}
-                                  </span>
-                                </span>
-                              </div>
-                              <div className="h-1.5 rounded-full bg-[#3b0f0c]/20 overflow-hidden">
-                                <div
-                                  className="h-full bg-[#fbbf24]"
-                                  style={{
-                                    width: `${(progress / 12) * 100}%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() =>
-                                  handleRemoveStamp(c.member_code)
-                                }
-                                disabled={removingFor === c.member_code}
-                                className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#501914]/30 text-[#501914] bg-white/80 hover:bg-white disabled:opacity-60 shadow-sm"
-                              >
-                                {removingFor === c.member_code
-                                  ? "Undoing…"
-                                  : "Undo"}
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleAddStamp(c.member_code)
-                                }
-                                disabled={addingFor === c.member_code}
-                                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[#501914] text-[#f5e6c8] hover:bg-[#3f120f] shadow-[0_4px_10px_rgba(0,0,0,0.35)] disabled:opacity-60"
-                              >
-                                {addingFor === c.member_code
-                                  ? "Updating…"
-                                  : "+1"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT: customers nearly at 12 stamps */}
-          <div className="space-y-3">
-            <div className="bg-white rounded-3xl shadow-[0_0_25px_rgba(0,0,0,0.18)] border border-[#f3dcaa] p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="text-sm font-semibold text-[#501914]">
-                    Almost at reward
-                  </p>
-                  <p className="text-[11px] text-[#501914]/70">
-                    Customers with 9–11 stamps (sorted by most stamps).
-                  </p>
-                </div>
-              </div>
-
-              {almostReward.length === 0 ? (
-                <p className="text-xs text-[#501914]/70 mt-2">
-                  No members are currently between 9 and 11 stamps.
-                </p>
-              ) : (
-                <div className="mt-2 overflow-hidden rounded-2xl border border-[#f3dcaa] bg-[#fffaf0]">
-                  <table className="w-full text-xs">
-                    <thead className="bg-[#501914] text-[#f5e6c8] text-[11px] uppercase tracking-wide">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Member</th>
-                        <th className="px-3 py-2 text-left">Name</th>
-                        <th className="px-3 py-2 text-center">Stamps</th>
-                        <th className="px-3 py-2 text-center">Left</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {almostReward.map((c) => {
-                        const stamps = Number(c.current_stamps || 0);
-                        const left = 12 - stamps;
-
-                        return (
-                          <tr
-                            key={c.member_code}
-                            className="odd:bg-[#fff7e3] even:bg-[#ffefd0]"
-                          >
-                            <td className="px-3 py-2 font-mono text-[11px] text-[#501914]">
-                              {c.member_code}
-                            </td>
-                            <td className="px-3 py-2 text-[#501914] truncate">
-                              {c.name}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-[11px] font-semibold text-[#92400e]">
-                                {stamps}/12
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-center text-[#501914]/80">
-                              {left}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <p className="mt-3 text-[10px] text-[#501914]/65">
-                Tip: focus on these members for special reminders or offers –
-                they&apos;re closest to unlocking a free CakeRoven treat 🎁
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* simple keyframes hint (Tailwind can't declare these, add to your CSS if needed)
-          @keyframes confetti {
-            0% { transform: translate3d(0, -10px, 0) rotate(0deg); opacity: 1; }
-            100% { transform: translate3d(0, 120vh, 0) rotate(360deg); opacity: 0; }
-          }
+      {/* Helpful CSS notes for confetti animation (paste into your global CSS if not present)
+        @keyframes confetti {
+          0% { transform: translate3d(0, -10px, 0) rotate(0deg); opacity: 1; }
+          100% { transform: translate3d(0, 120vh, 0) rotate(360deg); opacity: 0; }
+        }
+        .animate-confetti { animation: confetti 900ms ease-out forwards; }
       */}
     </div>
   );
