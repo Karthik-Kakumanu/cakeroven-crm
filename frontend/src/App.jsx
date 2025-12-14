@@ -6,6 +6,12 @@ import ExistingUser from "./pages/ExistingUser";
 import Card from "./pages/Card";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import CancellationRefunds from "./pages/CancellationRefunds";
+import ContactUs from "./pages/ContactUs";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import ShippingPolicy from "./pages/ShippingPolicy";
+import TermsConditions from "./pages/TermsConditions";  
+
 
 function App() {
   return (
