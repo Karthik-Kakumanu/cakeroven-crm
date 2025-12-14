@@ -55,29 +55,34 @@ export default function Register() {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-[#f5e6c8] flex items-center justify-center px-4">
 
-      {/* subtle radial background (same family as Start) */}
+      {/* subtle radial background */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_#ffffff_0,_#f5e6c8_45%,_#f5e6c8_100%)]" />
 
-      {/* 🍰 Falling CakeRoven Logos (NO background, NO circles) */}
+      {/* 🍰 Falling CakeRoven Logos – DARKER & CLEAR */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {[...Array(7)].map((_, i) => (
+        {[...Array(6)].map((_, i) => (
           <motion.img
             key={i}
             src="/cakeroven-logo.png"
             alt=""
-            className="absolute w-8 h-8 opacity-15"
+            className="absolute w-9 h-9 opacity-60"
+            style={{
+              filter: "contrast(1.2) brightness(0.85)",
+            }}
             initial={{
-              y: -80,
+              y: -100,
               x: `${Math.random() * 100}vw`,
               opacity: 0,
+              scale: 0.9,
             }}
             animate={{
               y: "110vh",
-              opacity: [0, 0.25, 0],
+              opacity: [0, 0.55, 0.35, 0],
+              scale: [0.9, 1, 1, 0.95],
             }}
             transition={{
-              duration: 6 + Math.random() * 3,
-              delay: i * 0.8,
+              duration: 7 + Math.random() * 3,
+              delay: i * 1.1,
               repeat: Infinity,
               ease: "easeInOut",
             }}
@@ -87,7 +92,7 @@ export default function Register() {
 
       {/* Main Register Card */}
       <motion.div
-        initial={{ opacity: 0, y: 40, scale: 0.96 }}
+        initial={{ opacity: 0, y: 40, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
         className="relative z-10 w-full max-w-md rounded-[32px] bg-[#501914] p-6 sm:p-8 text-[#f5e6c8] shadow-[0_30px_70px_rgba(0,0,0,0.6)]"
