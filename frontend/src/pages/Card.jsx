@@ -6,14 +6,7 @@ import { API_BASE } from "../apiConfig";
 
 /**
  * Card.jsx (Holiday-aware + Mobile-first)
- *
- * Holiday behavior (IST):
- * - Christmas: Dec 25 (00:00 → 23:59 IST) every year — show "Happy Christmas" message, hide card/stamps.
- * - New Year: Dec 31 (00:00 IST) → Jan 1 (23:59 IST) every year — show "Happy New Year" message, hide card/stamps.
- *
- * - Public asset: public/cakeroven-logo.png (inline logo in header)
- * - Framer Motion used for micro-interactions
- * - Tailwind CSS for styling
+ * Fixed: Animation logic moved inside the return statement.
  */
 
 function getIstDate(now = new Date()) {
@@ -23,11 +16,10 @@ function getIstDate(now = new Date()) {
 }
 
 function getHolidayInfoForIst(dateIst) {
-  // dateIst is a Date already adjusted to IST
-  const month = dateIst.getUTCMonth(); // 0=Jan .. 11=Dec when using UTC methods on IST-adjusted Date
+  const month = dateIst.getUTCMonth(); 
   const day = dateIst.getUTCDate();
 
-  // Christmas: every year Dec 25
+  // Christmas: Dec 25
   if (month === 11 && day === 25) {
     return {
       isHoliday: true,
@@ -38,9 +30,7 @@ function getHolidayInfoForIst(dateIst) {
     };
   }
 
-  // New Year: Dec 31 and Jan 1 (48 hours)
-  // Dec 31 => month 11 day 31
-  // Jan 1 => month 0 day 1
+  // New Year: Dec 31 & Jan 1
   if ((month === 11 && day === 31) || (month === 0 && day === 1)) {
     return {
       isHoliday: true,
@@ -57,7 +47,7 @@ function getHolidayInfoForIst(dateIst) {
 export default function Card() {
   const navigate = useNavigate();
 
-  // ---------- Hooks (top-level only) ----------
+  // ---------- Hooks ----------
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -67,7 +57,7 @@ export default function Card() {
   const [holiday, setHoliday] = useState({ isHoliday: false });
   const isMountedRef = useRef(true);
 
-  // Ensure isMountedRef for safe setState when async finishes
+  // Safe mount check
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -75,20 +65,20 @@ export default function Card() {
     };
   }, []);
 
-  // Check holidays on mount and every minute — using IST
+  // Holiday check
   useEffect(() => {
     const checkHoliday = () => {
-      const ist = getIstDate(); // Date adjusted to IST
+      const ist = getIstDate();
       const info = getHolidayInfoForIst(ist);
       setHoliday(info);
     };
 
     checkHoliday();
-    const id = setInterval(checkHoliday, 60 * 1000); // re-check every minute
+    const id = setInterval(checkHoliday, 60 * 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Remove stray "member" query param (safe)
+  // Clean URL params
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && window.location?.search) {
@@ -103,7 +93,7 @@ export default function Card() {
     }
   }, []);
 
-  // Fetch card (safe — abortable)
+  // Fetch Card
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
@@ -129,7 +119,6 @@ export default function Card() {
           const message = d.message || "Unable to load card. Please sign in again.";
           setError(message);
           setLoading(false);
-          // clear session so user can re-login
           localStorage.removeItem("cr_memberCode");
           localStorage.removeItem("cr_phone");
           return;
@@ -154,7 +143,7 @@ export default function Card() {
     return () => controller.abort();
   }, [navigate]);
 
-  // Celebrate micro-animation when card full
+  // Celebration trigger
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
   const isRewardReady = stamps >= 12;
@@ -167,12 +156,11 @@ export default function Card() {
     }
   }, [isRewardReady]);
 
-  // Derived
+  // Derived vars
   const memberCode = card?.memberCode || card?.member_code || "—";
   const maskedPhone =
     card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
 
-  // Inline logo path (public root)
   const inlineLogoSrc = `${process.env.PUBLIC_URL || ""}/cakeroven-logo.png`;
 
   const page = {
@@ -186,7 +174,6 @@ export default function Card() {
     filledPulse: { scale: [1, 1.06, 1], transition: { duration: 0.42 } },
   };
 
-  // Handlers
   const handleSwitchUser = () => {
     localStorage.removeItem("cr_memberCode");
     localStorage.removeItem("cr_phone");
@@ -194,7 +181,7 @@ export default function Card() {
   };
   const handleInlineLogoError = () => setLogoInlineVisible(false);
 
-  // --- If holiday active, show holiday panel and DO NOT show card/stamps ---
+  // --- Holiday View ---
   if (holiday?.isHoliday) {
     const { title, message } = holiday;
     return (
@@ -204,36 +191,21 @@ export default function Card() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.45 }}
           className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-2xl p-6 text-center"
-          aria-live="polite"
         >
           <div className="flex items-center justify-center mb-4">
             <div className="rounded-full bg-amber-100 p-3 shadow-inner">
-              {/* small decorative emoji/logo */}
               <span style={{ fontSize: 28 }}>{holiday.key === "christmas" ? "🎄" : "🎉"}</span>
             </div>
           </div>
-
           <h2 className="text-2xl font-extrabold text-amber-900 mb-2">{title}</h2>
           <p className="text-sm text-amber-800/90 mb-4">{message}</p>
-
           <div className="space-y-3">
-            <p className="text-xs text-amber-700/80">
-              We apologize for the temporary downtime. Please visit us again after the holiday period.
-            </p>
-
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 onClick={() => window.location.reload()}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-700 text-white text-sm shadow hover:brightness-105 transition"
               >
                 Refresh
-              </button>
-
-              <button
-                onClick={handleSwitchUser}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-amber-700 text-amber-700 text-sm hover:bg-amber-50 transition"
-              >
-                Switch user
               </button>
             </div>
           </div>
@@ -242,7 +214,7 @@ export default function Card() {
     );
   }
 
-  // Loading
+  // --- Loading View ---
   if (loading) {
     return (
       <main className="min-h-screen bg-amber-50 flex items-center justify-center py-8 px-4">
@@ -263,7 +235,7 @@ export default function Card() {
     );
   }
 
-  // Error with no card
+  // --- Error View ---
   if (error && !card) {
     return (
       <main className="min-h-screen bg-amber-50 flex items-center justify-center p-6">
@@ -289,44 +261,50 @@ export default function Card() {
     );
   }
 
-   {/* ✅ ADDED: CAKEROVEN LOGO RAIN */}
-      <div className="pointer-events-none absolute inset-0 z-0">
-        {Array.from({ length: 10 }).map((_, i) => (
+  // --- Main Card UI ---
+  return (
+    // Added overflow-hidden relative to contain the rain
+    <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4 relative overflow-hidden">
+      
+      {/* ✅ CAKEROVEN LOGO RAIN ANIMATION ✅ */}
+      {/* Placed HERE, inside the return. z-50 puts it ON TOP of the card. */}
+      <div className="pointer-events-none absolute inset-0 z-50 h-full w-full overflow-hidden">
+        {Array.from({ length: 15 }).map((_, i) => (
           <motion.img
             key={i}
-            src="/cakeroven-logo.png"
+            src="/cakeroven-logo.png" // Ensure this image is in your public folder
             alt=""
-            className="absolute w-16 h-16"
+            className="absolute w-12 h-12 md:w-16 md:h-16 object-contain"
             initial={{
               y: -150,
               x: `${Math.random() * 100}vw`,
               opacity: 0,
-              rotate: -20,
+              rotate: Math.random() * 360,
             }}
             animate={{
               y: "110vh",
               opacity: [0, 1, 1, 0],
-              rotate: [-20, 10, -10, 20],
+              rotate: [0, 360],
             }}
             transition={{
-              duration: 8,
-              delay: i * 0.6,
+              duration: 5 + Math.random() * 5, // Random speed between 5-10s
+              delay: i * 0.8, // Stagger start
               repeat: Infinity,
               ease: "linear",
             }}
-            style={{ filter: "brightness(0.7) contrast(1.5)" }}
+            style={{ 
+               left: `${Math.random() * 100}%`,
+               filter: "brightness(0.9) drop-shadow(0px 4px 6px rgba(0,0,0,0.2))" 
+            }}
           />
         ))}
       </div>
 
-  // --- Main card UI (normal days) ---
-  return (
-    <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
       <motion.section
         initial="hidden"
         animate="enter"
         variants={page}
-        className="w-full max-w-sm md:max-w-xl relative"
+        className="w-full max-w-sm md:max-w-xl relative z-10" // z-10 puts card under the rain (which is z-50)
         aria-labelledby="stamp-card-heading"
       >
         <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-lg text-amber-100 p-4 sm:p-6 md:p-8 overflow-hidden">
@@ -347,8 +325,13 @@ export default function Card() {
               )}
 
               <div className="min-w-0">
-                <p className="text-xs tracking-widest uppercase text-amber-100/65">CAKEROVEN LOYALTY</p>
-                <h1 id="stamp-card-heading" className="text-lg sm:text-xl font-extrabold leading-tight mt-1">
+                <p className="text-xs tracking-widest uppercase text-amber-100/65">
+                  CAKEROVEN LOYALTY
+                </p>
+                <h1
+                  id="stamp-card-heading"
+                  className="text-lg sm:text-xl font-extrabold leading-tight mt-1"
+                >
                   Digital Stamp Card
                 </h1>
               </div>
@@ -369,7 +352,9 @@ export default function Card() {
 
             <div className="flex items-center gap-2 text-sm">
               <span className="text-xs text-amber-100/70">Phone:</span>
-              <span className="font-mono text-sm">{showPhone ? card?.phone : maskedPhone}</span>
+              <span className="font-mono text-sm">
+                {showPhone ? card?.phone : maskedPhone}
+              </span>
               <button
                 aria-pressed={showPhone}
                 onClick={() => setShowPhone((s) => !s)}
@@ -387,7 +372,9 @@ export default function Card() {
                 {stamps}/12
               </span>
               <p className="text-xs text-amber-100/80">
-                {isRewardReady ? "Reward unlocked! Claim below." : "stamps to your next treat."}
+                {isRewardReady
+                  ? "Reward unlocked! Claim below."
+                  : "stamps to your next treat."}
               </p>
             </div>
 
@@ -401,7 +388,8 @@ export default function Card() {
             <div className="flex items-start justify-between mb-2 gap-2">
               <div className="text-sm text-amber-100/80">
                 <p className="text-xs">
-                  Collect <span className="font-semibold">12 stamps</span> to unlock a special CakeRoven treat 🎁
+                  Collect <span className="font-semibold">12 stamps</span> to
+                  unlock a special CakeRoven treat 🎁
                 </p>
                 {rewards > 0 && (
                   <p className="mt-1 text-amber-200/90 text-xs">
@@ -410,7 +398,9 @@ export default function Card() {
                 )}
               </div>
 
-              <span className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20">BOARD</span>
+              <span className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20">
+                BOARD
+              </span>
             </div>
 
             <div className="grid grid-cols-4 gap-2 justify-center">
@@ -432,9 +422,6 @@ export default function Card() {
                           ? "bg-amber-100 text-[#501914] border-transparent shadow-[0_6px_18px_rgba(0,0,0,0.45)]"
                           : "bg-transparent text-amber-100/80 border-amber-100/20 hover:bg-amber-100/6"
                       }`}
-                      onClick={() => {
-                        // place for future interactions (keep non-hook-creating)
-                      }}
                     >
                       <span className="font-semibold pointer-events-none select-none text-xs md:text-sm">
                         {index}
@@ -453,14 +440,14 @@ export default function Card() {
           <div className="text-xs text-amber-100/75 space-y-2">
             <p>
               Show this card at the counter after each visit. Every bill of{" "}
-              <span className="font-semibold">₹1000 or more</span> earns <span className="font-semibold">1 stamp</span>.
+              <span className="font-semibold">₹1000 or more</span> earns{" "}
+              <span className="font-semibold">1 stamp</span>.
             </p>
             <p>
-              After collecting 12 stamps, you’re eligible for a complimentary CakeRoven treat. 
+              After collecting 12 stamps, you’re eligible for a complimentary
+              CakeRoven treat.
             </p>
-            <p>
-              A Gift Hamper / A Cake.
-            </p>
+            <p>A Gift Hamper / A Cake.</p>
 
             <div className="flex items-center gap-2 mt-2">
               <button
