@@ -5,13 +5,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx
+ * Card.jsx (Final Version)
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 11 Stamps AUTOMATED via Payment (Razorpay).
  * - 12th Stamp is MANUAL only.
- * - FIXED: Toast is perfectly centered on mobile.
- * - FIXED: Stamp updates INSTANTLY without refresh.
+ * - FIXED: Toast is centered and mobile-friendly.
+ * - FIXED: Stamps appear INSTANTLY after payment.
+ * - FIXED: Stamp circle remains visible when filled.
  */
 
 function getIstDate(now = new Date()) {
@@ -104,6 +105,7 @@ export default function Card() {
     return () => clearInterval(id);
   }, []);
 
+  // Sync URL Params
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && window.location?.search) {
@@ -118,7 +120,7 @@ export default function Card() {
     }
   }, []);
 
-  // Fetch Card Data
+  // Load Card Data
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
@@ -208,9 +210,8 @@ export default function Card() {
     }
 
     // 3. Setup Options
-    // ✅ NOTE: Ensure this Key ID is correct
     const options = {
-      key: "rzp_test_1DP5mmOlF5G5ag", 
+      key: "rzp_test_1DP5mmOlF5G5ag", // ✅ Test Key
       amount: Number(payAmount) * 100, // Amount in paise
       currency: "INR",
       name: "CakeRoven",
@@ -246,9 +247,9 @@ export default function Card() {
                // No Stamp Added Logic
                if (data.reason === "low_amount") {
                  setToast({ 
-                   message: "Sorry, stamp be availed if price is 1000. Make it next time!", 
+                   message: "Sorry, stamp be availed if price is 1000. Make it next time! 😊", 
                    type: "info",
-                   duration: 3000
+                   duration: 2500
                  });
                } else if (data.reason === "limit_reached") {
                  setToast({ message: "Payment successful! 12th stamp must be claimed manually.", type: "info", duration: 3500 });
@@ -573,7 +574,7 @@ export default function Card() {
                   if (filled) {
                     borderClasses = isFinal 
                         ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
-                        : "border-transparent bg-amber-100 shadow-md";
+                        : "border-amber-200 bg-amber-100 shadow-md"; // Fixed: Circle visible when filled
                   } else {
                     borderClasses = isFinal 
                         ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
@@ -758,14 +759,14 @@ export default function Card() {
       <AnimatePresence>
         {toast && (
           <motion.div 
-            initial={{ opacity: 0, y: 50 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: 20 }}
+            // 1. Center Horizontally using left: 50% and x: -50%
+            initial={{ opacity: 0, y: 50, x: "-50%" }} 
+            animate={{ opacity: 1, y: 0, x: "-50%" }} 
+            exit={{ opacity: 0, y: 20, x: "-50%" }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            // FIXED: Using standard flex centering for robustness on all devices
-            className="fixed bottom-10 left-0 w-full z-50 flex justify-center px-4 pointer-events-none"
+            className="fixed bottom-10 left-1/2 z-50 w-[90%] max-w-[360px]"
           >
-            <div className={`pointer-events-auto w-full max-w-[360px] p-4 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md
+            <div className={`p-4 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md
               ${toast.type === 'success' ? 'bg-[#501914]/95 text-amber-100 border-amber-500/50' : 
                 toast.type === 'error' ? 'bg-red-900/90 text-white border-red-500/50' : 
                 'bg-gray-800/95 text-white border-white/10'}`}>
