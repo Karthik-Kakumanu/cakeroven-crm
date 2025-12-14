@@ -41,12 +41,11 @@ exports.getCustomers = async (req, res) => {
              COALESCE(l.current_stamps,0) as current_stamps,
              COALESCE(l.total_rewards,0) as total_rewards,
              l.updated_at,
-             // ✅ NEW LINE (Sorts by newest date first)
-(
-  SELECT json_agg(json_build_object('index', sh.stamp_index, 'date', sh.created_at) ORDER BY sh.created_at DESC)
-  FROM stamps_history sh
-  WHERE sh.user_id = u.id
-) as stamp_history
+             (
+               SELECT json_agg(json_build_object('index', sh.stamp_index, 'date', sh.created_at))
+               FROM stamps_history sh
+               WHERE sh.user_id = u.id
+             ) as stamp_history
       FROM users u
       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
       ORDER BY u.id ASC
