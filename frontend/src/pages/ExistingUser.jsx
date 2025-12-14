@@ -1,6 +1,6 @@
-// frontend/src/pages/ExistingUser.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 export default function ExistingUser() {
@@ -46,43 +46,67 @@ export default function ExistingUser() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5e6c8] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-[#501914] text-[#f5e6c8] rounded-[32px] shadow-[0_24px_60px_rgba(0,0,0,0.6)] p-6 sm:p-8 relative overflow-hidden">
-        <div className="absolute -top-10 right-[-20px] w-32 h-32 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-[-20px] left-[-20px] w-36 h-36 bg-[#f5e6c8]/10 rounded-full blur-3xl" />
+    <div className="relative min-h-screen bg-[#f5e6c8] overflow-hidden flex items-center justify-center px-4">
 
-        <div className="relative z-10 flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-full bg-[#f5e6c8] flex items-center justify-center shadow-[0_0_25px_rgba(0,0,0,0.4)]">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-white">
-              <img
-                src="/cakeroven-logo.png"
-                alt="CakeRoven"
-                className="w-full h-full object-cover"
-              />
-            </div>
+      {/* background */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_#ffffff_0,_#f5e6c8_45%,_#f5e6c8_100%)]" />
+
+      {/* LOUD FALLING LOGOS */}
+      <div className="pointer-events-none absolute inset-0">
+        {[...Array(8)].map((_, i) => (
+          <motion.img
+            key={i}
+            src="/cakeroven-logo.png"
+            className="absolute w-14 h-14"
+            initial={{
+              y: -120,
+              x: `${Math.random() * 100}vw`,
+              opacity: 0,
+              rotate: -10,
+            }}
+            animate={{
+              y: "110vh",
+              opacity: [0, 0.95, 0.8, 0],
+              rotate: [-10, 5, -5, 10],
+            }}
+            transition={{
+              duration: 7,
+              delay: i * 0.7,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+            style={{ filter: "contrast(1.3) brightness(0.9)" }}
+          />
+        ))}
+      </div>
+
+      {/* CARD */}
+      <motion.div
+        initial={{ opacity: 0, y: 40, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6 }}
+        className="relative z-10 w-full max-w-md bg-[#501914] text-[#f5e6c8] rounded-[32px] p-6 sm:p-8 shadow-[0_30px_70px_rgba(0,0,0,0.6)]"
+      >
+        {/* header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-full bg-[#f5e6c8] flex items-center justify-center shadow-lg">
+            <img src="/cakeroven-logo.png" className="w-9 h-9 rounded-full" />
           </div>
           <div>
-            <h1 className="text-lg font-bold leading-tight">
-              CakeRoven Loyalty
-            </h1>
-            <p className="text-[11px] text-[#f5e6c8]/80">
-              Access your existing digital stamp card.
+            <h1 className="font-bold text-lg">CakeRoven Loyalty</h1>
+            <p className="text-xs text-[#f5e6c8]/80">
+              Access your digital stamp card
             </p>
           </div>
         </div>
 
-        <h2 className="relative z-10 text-xl font-semibold mb-1">
-          Existing User Login
-        </h2>
-        <p className="relative z-10 text-xs text-[#f5e6c8]/80 mb-5">
-          Enter the phone number used at the bakery counter.
+        <h2 className="text-xl font-semibold mb-1">Existing User Login</h2>
+        <p className="text-xs text-[#f5e6c8]/80 mb-5">
+          Enter your registered mobile number
         </p>
 
-        <form
-          onSubmit={handleSubmit}
-          className="relative z-10 space-y-4 text-sm"
-        >
-          <div className="flex flex-col gap-1">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
             <label className="text-xs font-semibold">Registered Phone</label>
             <input
               type="tel"
@@ -91,29 +115,26 @@ export default function ExistingUser() {
               value={phone}
               onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
               placeholder="10-digit mobile number"
-              className="h-11 rounded-2xl px-3 outline-none bg-[#f5e6c8] text-[#501914] border border-transparent focus:border-[#f5e6c8] text-sm"
+              className="w-full h-11 mt-1 rounded-2xl bg-[#f5e6c8] text-[#501914] px-3 outline-none"
             />
           </div>
 
-          <button
-            type="submit"
+          <motion.button
+            whileTap={{ scale: 0.97 }}
             disabled={loading}
-            className="mt-2 w-full h-11 rounded-2xl bg-[#f5e6c8] text-[#501914] font-semibold text-sm shadow-[0_10px_25px_rgba(0,0,0,0.6)] active:scale-[0.98] transition-transform disabled:opacity-70"
+            className="w-full h-11 rounded-2xl bg-[#f5e6c8] text-[#501914] font-semibold shadow-lg disabled:opacity-70"
           >
             {loading ? "Finding your card..." : "Open My CakeRoven Card"}
-          </button>
+          </motion.button>
         </form>
 
-        <p className="relative z-10 mt-4 text-[11px] text-center text-[#f5e6c8]/85">
-          New to CakeRoven?{" "}
-          <Link
-            to="/register"
-            className="underline font-semibold hover:text-[#ffd8b5]"
-          >
+        <p className="mt-4 text-xs text-center text-[#f5e6c8]/85">
+          New here?{" "}
+          <Link to="/register" className="underline font-semibold">
             Create a new card
           </Link>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }
