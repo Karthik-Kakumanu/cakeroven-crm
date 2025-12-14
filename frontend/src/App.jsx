@@ -20,6 +20,11 @@ function App() {
       {/* Admin side */}
       <Route path="/admin" element={<AdminLogin />} />
       <Route path="/admin-dashboard" element={<AdminDashboard />} />
+      <Route path="/refunds" element={<CancellationRefunds />} />
+      <Route path="/terms" element={<TermsConditions />} />
+      <Route path="/shipping" element={<ShippingPolicy />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/contact" element={<ContactUs />} />
     </Routes>
   );
 }
