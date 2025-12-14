@@ -9,7 +9,7 @@ import { API_BASE } from "../apiConfig";
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 12th Stamp is UNIQUE.
- * - NEW: "₹2000 Food FREE" message added in the empty space below Member ID/Phone.
+ * - NEW: "₹2000 Food FREE" added to the right of Name/Phone (circled area).
  */
 
 function getIstDate(now = new Date()) {
@@ -333,16 +333,19 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Holder Info */}
-          <div className="mb-3 flex flex-row items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-xs text-amber-100/70">Card Holder</p>
-              <p className="text-base font-semibold truncate">{card?.name || "—"}</p>
-            </div>
+          {/* ✅ HOLDER INFO + NEW ANIMATED BADGE AREA ✅ */}
+          {/* We use flex row to put Name/Phone on LEFT and Badge on RIGHT (Circled area) */}
+          <div className="mb-4 flex items-end justify-between gap-2">
+            
+            {/* LEFT SIDE: Name and Phone Stacked */}
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <div className="min-w-0">
+                <p className="text-xs text-amber-100/70">Card Holder</p>
+                <p className="text-base font-semibold truncate">{card?.name || "—"}</p>
+              </div>
 
-            <div className="flex flex-col items-end gap-1.5">
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-xs text-amber-100/70 hidden sm:inline">Phone:</span>
+                <span className="text-xs text-amber-100/70">Phone:</span>
                 <span className="font-mono text-sm">
                   {showPhone ? card?.phone : maskedPhone}
                 </span>
@@ -354,16 +357,34 @@ export default function Card() {
                   {showPhone ? "HIDE" : "SHOW"}
                 </button>
               </div>
-
-              {/* ✅ ADDED: Animated Promotional Message BELOW Phone (Empty Space) ✅ */}
-              <motion.div
-                animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
-                transition={{ duration: 1.8, repeat: Infinity }}
-                className="text-[10px] sm:text-xs font-bold text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 px-2 py-0.5 rounded-full"
-              >
-                ✨ 2000 Rs Worth Food FREE
-              </motion.div>
             </div>
+
+            {/* RIGHT SIDE (Circled Area): Animated Promo Badge */}
+            <motion.div
+              animate={{ 
+                scale: [1, 1.05, 1],
+                opacity: [0.9, 1, 0.9],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+              className="mb-1 mr-1 flex flex-col items-end justify-center"
+            >
+              <div className="relative group">
+                <div className="absolute inset-0 bg-[#fbbf24] blur opacity-20 rounded-lg group-hover:opacity-30 transition"></div>
+                <div className="relative px-3 py-1.5 rounded-xl border border-[#fbbf24]/40 bg-[#fbbf24]/10 shadow-[0_0_15px_rgba(251,191,36,0.15)] backdrop-blur-sm">
+                  <p className="text-[10px] uppercase tracking-wider text-[#fbbf24]/80 font-bold mb-0.5 text-right leading-none">
+                    Unlocks at 12
+                  </p>
+                  <p className="text-xs sm:text-sm font-extrabold text-[#fbbf24] whitespace-nowrap leading-none shadow-black drop-shadow-md">
+                    ₹2000 Food FREE ✨
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
           </div>
 
           {/* Progress Bar */}
