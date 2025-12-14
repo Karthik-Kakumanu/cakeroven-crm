@@ -1,18 +1,17 @@
 // src/pages/Card.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx (Final Version)
+ * Card.jsx (Final Fix)
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 11 Stamps AUTOMATED via Payment (Razorpay).
  * - 12th Stamp is MANUAL only.
+ * - FIXED: Board Auto-Refreshes instantly after payment.
  * - FIXED: Toast is centered and mobile-friendly.
- * - FIXED: Stamps appear INSTANTLY after payment.
- * - FIXED: Stamp circle remains visible when filled.
  */
 
 function getIstDate(now = new Date()) {
@@ -73,7 +72,7 @@ export default function Card() {
   const [isPaying, setIsPaying] = useState(false);
 
   // Notification State (Toast)
-  const [toast, setToast] = useState(null); // { message, type, duration }
+  const [toast, setToast] = useState(null); 
 
   const isMountedRef = useRef(true);
 
@@ -120,8 +119,9 @@ export default function Card() {
     }
   }, []);
 
-  // Load Card Data
-  useEffect(() => {
+  // --- REUSABLE FETCH FUNCTION ---
+  // This allows us to refresh data manually after payment without reloading the page
+  const refreshCardData = useCallback(async (isSilent = false) => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
 
@@ -130,45 +130,41 @@ export default function Card() {
       return;
     }
 
-    const controller = new AbortController();
+    if (!isSilent) setLoading(true);
+    setError("");
 
-    const fetchCard = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const url = `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(
-          phone
-        )}`;
-        const res = await fetch(url, { signal: controller.signal });
+    try {
+      const url = `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(phone)}`;
+      const res = await fetch(url);
 
-        if (!res.ok) {
-          const d = await res.json().catch(() => ({}));
-          const message = d.message || "Unable to load card. Please sign in again.";
-          setError(message);
-          setLoading(false);
-          localStorage.removeItem("cr_memberCode");
-          localStorage.removeItem("cr_phone");
-          return;
-        }
-
-        const data = await res.json();
-        if (isMountedRef.current) {
-          setCard(data.card || data);
-          setLoading(false);
-        }
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        console.error("fetchCard error:", err);
-        if (isMountedRef.current) {
-          setError("Server error while loading your card.");
-          setLoading(false);
-        }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        const message = d.message || "Unable to load card. Please sign in again.";
+        setError(message);
+        setLoading(false);
+        localStorage.removeItem("cr_memberCode");
+        localStorage.removeItem("cr_phone");
+        return;
       }
-    };
 
-    fetchCard();
-    return () => controller.abort();
+      const data = await res.json();
+      if (isMountedRef.current) {
+        setCard(data.card || data);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("fetchCard error:", err);
+      if (isMountedRef.current) {
+        setError("Server error while loading your card.");
+        setLoading(false);
+      }
+    }
   }, [navigate]);
+
+  // Initial Load
+  useEffect(() => {
+    refreshCardData();
+  }, [refreshCardData]);
 
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
@@ -193,7 +189,6 @@ export default function Card() {
 
   // --- Payment Handler (Razorpay + Backend Logic) ---
   const handlePayment = async () => {
-    // 1. Validation (Allows ANY amount > 0)
     if (!payAmount || Number(payAmount) <= 0) {
       setToast({ message: "Please enter a valid amount.", type: "error" });
       return;
@@ -201,27 +196,24 @@ export default function Card() {
 
     setIsPaying(true);
 
-    // 2. Load the SDK
     const res = await loadRazorpayScript();
     if (!res) {
-      setToast({ message: "Razorpay SDK failed to load. Check internet.", type: "error" });
+      setToast({ message: "Razorpay SDK failed. Check internet.", type: "error" });
       setIsPaying(false);
       return;
     }
 
-    // 3. Setup Options
     const options = {
       key: "rzp_test_1DP5mmOlF5G5ag", // ✅ Test Key
-      amount: Number(payAmount) * 100, // Amount in paise
+      amount: Number(payAmount) * 100, 
       currency: "INR",
       name: "CakeRoven",
       description: "Loyalty Stamp Payment",
       image: `${window.location.origin}/cakeroven-logo.png`, 
       
-      // ✅ Success Handler
       handler: async function (response) {
         try {
-          // Call Backend
+          // Call Backend to Add Stamp
           const verifyRes = await fetch(`${API_BASE}/api/customer/add-online-stamp`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -235,19 +227,15 @@ export default function Card() {
           const data = await verifyRes.json();
           
           if (verifyRes.ok) {
-            // ✅ INSTANT UI UPDATE: Use data from backend to update state immediately
-            if (data.card) {
-                setCard(data.card);
-            }
+            // ✅ AUTO-REFRESH BOARD DATA HERE
+            await refreshCardData(true); // Call refresh silently (no loading spinner)
 
             if (data.stampAdded) {
-               // Success: 1 Stamp Added
                setToast({ message: "Payment Successful! 1 Stamp Added. 🎉", type: "success", duration: 4000 });
             } else {
-               // No Stamp Added Logic
                if (data.reason === "low_amount") {
                  setToast({ 
-                   message: "Sorry, stamp be availed if price is 1000. Make it next time! 😊", 
+                   message: "Sorry, stamp is only availed if price is ₹1000. Make it next time!", 
                    type: "info",
                    duration: 2500
                  });
@@ -280,12 +268,10 @@ export default function Card() {
     try {
       const paymentObject = new window.Razorpay(options);
       paymentObject.open();
-      
       paymentObject.on('payment.failed', function (response){
           setToast({ message: "Payment Failed: " + response.error.description, type: "error" });
           setIsPaying(false);
       });
-
     } catch (error) {
       console.error("Payment Error:", error);
       setIsPaying(false);
@@ -574,7 +560,7 @@ export default function Card() {
                   if (filled) {
                     borderClasses = isFinal 
                         ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
-                        : "border-amber-200 bg-amber-100 shadow-md"; // Fixed: Circle visible when filled
+                        : "border-transparent bg-amber-100 shadow-md";
                   } else {
                     borderClasses = isFinal 
                         ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
