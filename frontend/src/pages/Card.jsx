@@ -9,6 +9,7 @@ import { API_BASE } from "../apiConfig";
  * - Rain falls BEHIND card (z-0), fades at middle.
  * - Stamps are now the CAKEROVEN LOGO when filled.
  * - 12th Stamp is UNIQUE (Golden glow, Gift icon).
+ * - Added: "₹2000 Food FREE" animated badge in empty header space.
  */
 
 function getIstDate(now = new Date()) {
@@ -366,9 +367,20 @@ export default function Card() {
                   : "stamps to your next treat."}
               </p>
             </div>
+            
+            {/* ✅ ADDED: Promotional Message in empty space using Flex gap ✅ */}
+            <div className="flex items-center gap-2 ml-auto sm:ml-0">
+              <motion.div
+                animate={{ scale: [1, 1.05, 1], opacity: [0.9, 1, 0.9] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                className="text-[10px] sm:text-xs font-bold text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 px-2 py-1 rounded-full shadow-[0_0_10px_rgba(251,191,36,0.2)] whitespace-nowrap"
+              >
+                ✨ ₹2000 Food FREE
+              </motion.div>
 
-            <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">
-              PAY ₹1000+ = 1 STAMP
+              <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">
+                PAY ₹1000+ = 1 STAMP
+              </div>
             </div>
           </div>
 
@@ -399,8 +411,6 @@ export default function Card() {
                   const isFinal = index === 12;
 
                   // Define base classes
-                  // Standard stamp size: h-10 w-10
-                  // 12th stamp size: h-12 w-12 (slightly bigger) + Golden styling
                   const sizeClasses = isFinal ? "h-12 w-12 sm:h-14 sm:w-14" : "h-10 w-10 md:h-12 md:w-12";
                   
                   let borderClasses = "";
@@ -409,7 +419,7 @@ export default function Card() {
                         ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
                         : "border-transparent bg-amber-100 shadow-md";
                   } else {
-                     // Empty state
+                      // Empty state
                     borderClasses = isFinal 
                         ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
                         : "border-amber-100/20 bg-transparent hover:bg-amber-100/6";
@@ -426,9 +436,8 @@ export default function Card() {
                       className={`relative flex items-center justify-center rounded-full border transition-all ${sizeClasses} ${borderClasses}`}
                     >
                       {filled ? (
-                         /* ✅ FILLED STATE: Render Logo */
-                         /* If it's the 12th, we add a golden ring animation around the logo */
-                        <div className="relative w-full h-full p-1.5 flex items-center justify-center">
+                          /* ✅ FILLED STATE: Render Logo */
+                         <div className="relative w-full h-full p-1.5 flex items-center justify-center">
                            <motion.img 
                              src="/cakeroven-logo.png"
                              alt="Stamped"
