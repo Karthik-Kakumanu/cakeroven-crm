@@ -6,10 +6,10 @@ import { API_BASE } from "../apiConfig";
 
 /**
  * Card.jsx
- * - Rain falls BEHIND card (z-0), fades at middle.
- * - Stamps are now the CAKEROVEN LOGO when filled.
- * - 12th Stamp is UNIQUE (Golden glow, Gift icon).
- * - Added: "₹2000 Food FREE" animated badge in empty header space.
+ * - Rain falls BEHIND card (z-0).
+ * - Stamps are CAKEROVEN LOGO when filled.
+ * - 12th Stamp is UNIQUE.
+ * - NEW: "₹2000 Food FREE" message added in the empty space below Member ID/Phone.
  */
 
 function getIstDate(now = new Date()) {
@@ -334,24 +334,35 @@ export default function Card() {
           </div>
 
           {/* Holder Info */}
-          <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="mb-3 flex flex-row items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-xs text-amber-100/70">Card Holder</p>
               <p className="text-base font-semibold truncate">{card?.name || "—"}</p>
             </div>
 
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-xs text-amber-100/70">Phone:</span>
-              <span className="font-mono text-sm">
-                {showPhone ? card?.phone : maskedPhone}
-              </span>
-              <button
-                aria-pressed={showPhone}
-                onClick={() => setShowPhone((s) => !s)}
-                className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition"
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-xs text-amber-100/70 hidden sm:inline">Phone:</span>
+                <span className="font-mono text-sm">
+                  {showPhone ? card?.phone : maskedPhone}
+                </span>
+                <button
+                  aria-pressed={showPhone}
+                  onClick={() => setShowPhone((s) => !s)}
+                  className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition"
+                >
+                  {showPhone ? "HIDE" : "SHOW"}
+                </button>
+              </div>
+
+              {/* ✅ ADDED: Animated Promotional Message BELOW Phone (Empty Space) ✅ */}
+              <motion.div
+                animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 1.8, repeat: Infinity }}
+                className="text-[10px] sm:text-xs font-bold text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 px-2 py-0.5 rounded-full"
               >
-                {showPhone ? "HIDE" : "SHOW"}
-              </button>
+                ✨ 2000 Rs Worth Food FREE
+              </motion.div>
             </div>
           </div>
 
@@ -367,20 +378,9 @@ export default function Card() {
                   : "stamps to your next treat."}
               </p>
             </div>
-            
-            {/* ✅ ADDED: Promotional Message in empty space using Flex gap ✅ */}
-            <div className="flex items-center gap-2 ml-auto sm:ml-0">
-              <motion.div
-                animate={{ scale: [1, 1.05, 1], opacity: [0.9, 1, 0.9] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                className="text-[10px] sm:text-xs font-bold text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 px-2 py-1 rounded-full shadow-[0_0_10px_rgba(251,191,36,0.2)] whitespace-nowrap"
-              >
-                ✨ ₹2000 Food FREE
-              </motion.div>
 
-              <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">
-                PAY ₹1000+ = 1 STAMP
-              </div>
+            <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">
+              PAY ₹1000+ = 1 STAMP
             </div>
           </div>
 
