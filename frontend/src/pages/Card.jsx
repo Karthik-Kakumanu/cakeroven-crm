@@ -8,13 +8,10 @@ import { API_BASE } from "../apiConfig";
  * Card.jsx
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
- * - 12th Stamp is UNIQUE.
- * - Payment: Accepts ANY amount.
- * - Logic: 
- * - < 1000: No stamp, shows specific "Sorry" toast (2s).
- * - >= 1000: Adds stamp (unless 12th).
- * - FIXED: Responsive "Food Free" Badge.
- * - Professional Toast Notifications.
+ * - 11 Stamps AUTOMATED via Payment (Razorpay).
+ * - 12th Stamp is MANUAL only.
+ * - FIXED: Toast is perfectly centered on mobile.
+ * - FIXED: Stamp updates INSTANTLY without refresh.
  */
 
 function getIstDate(now = new Date()) {
@@ -31,8 +28,7 @@ function getHolidayInfoForIst(dateIst) {
       isHoliday: true,
       key: "christmas",
       title: "🎄 Happy Christmas",
-      message:
-        "Sorry for the inconvenience on Christmas day. Stamp access is temporarily unavailable. We'll be back shortly — enjoy the celebration!",
+      message: "Sorry for the inconvenience on Christmas day. Stamp access is temporarily unavailable.",
     };
   }
 
@@ -41,8 +37,7 @@ function getHolidayInfoForIst(dateIst) {
       isHoliday: true,
       key: "newyear",
       title: "🎉 Happy New Year",
-      message:
-        "We're celebrating the New Year! Stamp access is temporarily unavailable for the New Year period. Wishing you a fantastic year ahead!",
+      message: "We're celebrating the New Year! Stamp access is temporarily unavailable.",
     };
   }
 
@@ -77,7 +72,7 @@ export default function Card() {
   const [isPaying, setIsPaying] = useState(false);
 
   // Notification State (Toast)
-  const [toast, setToast] = useState(null); // { message, type: 'success'|'info'|'error', duration: ms }
+  const [toast, setToast] = useState(null); // { message, type, duration }
 
   const isMountedRef = useRef(true);
 
@@ -123,6 +118,7 @@ export default function Card() {
     }
   }, []);
 
+  // Fetch Card Data
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
@@ -212,17 +208,19 @@ export default function Card() {
     }
 
     // 3. Setup Options
+    // ✅ NOTE: Ensure this Key ID is correct
     const options = {
-      key: "rzp_test_1DP5mmOlF5G5ag", // ✅ Test Key
+      key: "rzp_test_1DP5mmOlF5G5ag", 
       amount: Number(payAmount) * 100, // Amount in paise
       currency: "INR",
       name: "CakeRoven",
       description: "Loyalty Stamp Payment",
       image: `${window.location.origin}/cakeroven-logo.png`, 
       
-      // ✅ Success Handler calling the NEW Endpoint
+      // ✅ Success Handler
       handler: async function (response) {
         try {
+          // Call Backend
           const verifyRes = await fetch(`${API_BASE}/api/customer/add-online-stamp`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -236,20 +234,21 @@ export default function Card() {
           const data = await verifyRes.json();
           
           if (verifyRes.ok) {
-            // Update Card State Immediately
-            if (data.card) setCard(data.card);
+            // ✅ INSTANT UI UPDATE: Use data from backend to update state immediately
+            if (data.card) {
+                setCard(data.card);
+            }
 
             if (data.stampAdded) {
                // Success: 1 Stamp Added
                setToast({ message: "Payment Successful! 1 Stamp Added. 🎉", type: "success", duration: 4000 });
             } else {
-               // Logic for NO stamp added (Low amount or Limit reached)
+               // No Stamp Added Logic
                if (data.reason === "low_amount") {
-                 // ** Specific Message for < 1000 **
                  setToast({ 
                    message: "Sorry, stamp be availed if price is 1000. Make it next time!", 
                    type: "info",
-                   duration: 2000 // Disappears after 2 seconds
+                   duration: 3000
                  });
                } else if (data.reason === "limit_reached") {
                  setToast({ message: "Payment successful! 12th stamp must be claimed manually.", type: "info", duration: 3500 });
@@ -755,24 +754,36 @@ export default function Card() {
         </AnimatePresence>
       </motion.section>
 
-      {/* ✅ NEW: Professional Toast Notification System ✅ */}
+      {/* ✅ NEW: Professional Centered Toast Notification ✅ */}
       <AnimatePresence>
         {toast && (
           <motion.div 
-            initial={{ opacity: 0, y: 50, scale: 0.9 }} 
-            animate={{ opacity: 1, y: 0, scale: 1 }} 
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-sm"
+            initial={{ opacity: 0, y: 50 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            // FIXED: Using standard flex centering for robustness on all devices
+            className="fixed bottom-10 left-0 w-full z-50 flex justify-center px-4 pointer-events-none"
           >
-            <div className={`p-4 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md
+            <div className={`pointer-events-auto w-full max-w-[360px] p-4 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md
               ${toast.type === 'success' ? 'bg-[#501914]/95 text-amber-100 border-amber-500/50' : 
                 toast.type === 'error' ? 'bg-red-900/90 text-white border-red-500/50' : 
-                'bg-gray-800/90 text-white border-white/10'}`}>
-               <span className="text-2xl">{toast.type === 'success' ? '🎉' : toast.type === 'error' ? '⚠️' : 'ℹ️'}</span>
+                'bg-gray-800/95 text-white border-white/10'}`}>
+               
+               {/* Icon */}
+               <span className="text-2xl flex-shrink-0">
+                 {toast.type === 'success' ? '🎉' : toast.type === 'error' ? '⚠️' : 'ℹ️'}
+               </span>
+               
+               {/* Message Text */}
                <div className="flex-1">
-                 <p className="text-sm font-medium leading-tight">{toast.message}</p>
+                 <p className="text-sm font-medium leading-snug">{toast.message}</p>
                </div>
-               <button onClick={()=>setToast(null)} className="opacity-50 hover:opacity-100">✕</button>
+               
+               {/* Close Button */}
+               <button onClick={()=>setToast(null)} className="opacity-50 hover:opacity-100 p-1">
+                 ✕
+               </button>
             </div>
           </motion.div>
         )}
