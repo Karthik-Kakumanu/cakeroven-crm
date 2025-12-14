@@ -10,6 +10,7 @@ import { API_BASE } from "../apiConfig";
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 12th Stamp is UNIQUE.
  * - NEW: Payment Gateway UI (Razorpay Ready).
+ * - FIXED: "₹2000 Food Free" Badge fits perfectly on all mobile screens.
  */
 
 function getIstDate(now = new Date()) {
@@ -194,20 +195,16 @@ export default function Card() {
     }
 
     // 2. Setup Options 
-    // TODO: Once verified, you will replace "YOUR_TEST_KEY_ID" with your actual Razorpay Key ID
-    // TODO: You will likely need to make an API call here to your backend to create an 'Order' first
-    
+    // TODO: Replace "YOUR_TEST_KEY_ID" with actual Razorpay Key ID
     const options = {
-      key: "YOUR_TEST_KEY_ID", // Enter your Key ID here later
-      amount: Number(payAmount) * 100, // Amount is in currency subunits. Default currency is INR. Hence, 50000 refers to 50000 paise
+      key: "YOUR_TEST_KEY_ID", 
+      amount: Number(payAmount) * 100, 
       currency: "INR",
       name: "CakeRoven",
       description: "Loyalty Card Payment",
-      image: "https://your-domain.com/cakeroven-logo.png", // Optional logo
+      image: "https://your-domain.com/cakeroven-logo.png",
       handler: function (response) {
-        // This runs on success
         alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
-        // Here you would call your backend to save the payment and update stamps
         setPayAmount("");
       },
       prefill: {
@@ -215,20 +212,15 @@ export default function Card() {
         contact: card?.phone || "",
       },
       theme: {
-        color: "#d97706", // Matches your Amber theme
+        color: "#d97706",
       },
     };
 
     try {
-      // NOTE: Because the account is under verification, this might not open the live modal yet.
-      // For now, let's simulate the action so you can see the UI working.
       console.log("Initializing Razorpay with options:", options);
-      
-      // Uncomment this line below when you have your Key ID:
       // const paymentObject = new window.Razorpay(options);
       // paymentObject.open();
 
-      // TEMP: Alert for testing UI
       setTimeout(() => {
         alert(`Payment gateway logic triggered for ₹${payAmount}. \n(Integration pending Razorpay verification)`);
         setIsPaying(false);
@@ -415,15 +407,19 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Holder Info */}
-          <div className="mb-4 flex items-end justify-between gap-2">
-            <div className="flex flex-col gap-1.5 min-w-0">
+          {/* ======================================================== */}
+          {/* ✅ FIXED HOLDER INFO + RESPONSIVE BADGE UI ✅ */}
+          {/* ======================================================== */}
+          <div className="mb-6 flex flex-row items-end justify-between gap-2 relative">
+            
+            {/* LEFT SIDE: Name and Phone (Takes available space) */}
+            <div className="flex flex-col gap-1 min-w-0 flex-1">
               <div className="min-w-0">
                 <p className="text-xs text-amber-100/70">Card Holder</p>
-                <p className="text-base font-semibold truncate">{card?.name || "—"}</p>
+                <p className="text-base font-semibold truncate pr-1">{card?.name || "—"}</p>
               </div>
 
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm flex-wrap">
                 <span className="text-xs text-amber-100/70">Phone:</span>
                 <span className="font-mono text-sm">
                   {showPhone ? card?.phone : maskedPhone}
@@ -431,39 +427,42 @@ export default function Card() {
                 <button
                   aria-pressed={showPhone}
                   onClick={() => setShowPhone((s) => !s)}
-                  className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition"
                 >
                   {showPhone ? "HIDE" : "SHOW"}
                 </button>
               </div>
             </div>
 
-            {/* Badge */}
+            {/* RIGHT SIDE: Animated Promo Badge (Scaled down on mobile to prevent overlap) */}
             <motion.div
               animate={{ 
-                scale: [1, 1.05, 1],
-                opacity: [0.9, 1, 0.9],
+                scale: [1, 1.02, 1],
+                opacity: [0.95, 1, 0.95],
               }}
               transition={{
-                duration: 2,
+                duration: 2.5,
                 repeat: Infinity,
                 ease: "easeInOut"
               }}
-              className="mb-1 mr-1 flex flex-col items-end justify-center"
+              className="flex-shrink-0 relative z-10"
             >
               <div className="relative group">
                 <div className="absolute inset-0 bg-[#fbbf24] blur opacity-20 rounded-lg group-hover:opacity-30 transition"></div>
-                <div className="relative px-3 py-1.5 rounded-xl border border-[#fbbf24]/40 bg-[#fbbf24]/10 shadow-[0_0_15px_rgba(251,191,36,0.15)] backdrop-blur-sm">
-                  <p className="text-[10px] uppercase tracking-wider text-[#fbbf24]/80 font-bold mb-0.5 text-right leading-none">
+                <div className="relative px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-[#fbbf24]/40 bg-[#fbbf24]/10 shadow-[0_0_15px_rgba(251,191,36,0.15)] backdrop-blur-sm">
+                  <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-[#fbbf24]/80 font-bold mb-0.5 text-right leading-none whitespace-nowrap">
                     Unlocks after 11 stamps
                   </p>
-                  <p className="text-xs sm:text-sm font-extrabold text-[#fbbf24] whitespace-nowrap leading-none shadow-black drop-shadow-md">
+                  <p className="text-[11px] sm:text-sm font-extrabold text-[#fbbf24] whitespace-nowrap leading-none shadow-black drop-shadow-md">
                     ₹2000 Food FREE ✨
                   </p>
                 </div>
               </div>
             </motion.div>
+
           </div>
+          {/* ======================================================== */}
+
 
           {/* Progress Bar */}
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
