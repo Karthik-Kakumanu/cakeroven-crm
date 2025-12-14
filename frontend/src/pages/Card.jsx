@@ -1,17 +1,16 @@
 // src/pages/Card.jsx
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx (Final Fix)
+ * Card.jsx (Final Auto-Refresh Version)
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
- * - 11 Stamps AUTOMATED via Payment (Razorpay).
+ * - 11 Stamps AUTOMATED via Payment.
  * - 12th Stamp is MANUAL only.
- * - FIXED: Board Auto-Refreshes instantly after payment.
- * - FIXED: Toast is centered and mobile-friendly.
+ * - FIXED: Page Auto-Refreshes 2 seconds after payment success.
  */
 
 function getIstDate(now = new Date()) {
@@ -76,7 +75,7 @@ export default function Card() {
 
   const isMountedRef = useRef(true);
 
-  // Auto-dismiss Toast Logic
+  // Auto-dismiss Toast
   useEffect(() => {
     if (toast) {
       const duration = toast.duration || 3500;
@@ -104,7 +103,7 @@ export default function Card() {
     return () => clearInterval(id);
   }, []);
 
-  // Sync URL Params
+  // Sync URL
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && window.location?.search) {
@@ -119,9 +118,8 @@ export default function Card() {
     }
   }, []);
 
-  // --- REUSABLE FETCH FUNCTION ---
-  // This allows us to refresh data manually after payment without reloading the page
-  const refreshCardData = useCallback(async (isSilent = false) => {
+  // Load Card
+  useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
 
@@ -130,41 +128,45 @@ export default function Card() {
       return;
     }
 
-    if (!isSilent) setLoading(true);
-    setError("");
+    const controller = new AbortController();
 
-    try {
-      const url = `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(phone)}`;
-      const res = await fetch(url);
+    const fetchCard = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const url = `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(
+          phone
+        )}`;
+        const res = await fetch(url, { signal: controller.signal });
 
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        const message = d.message || "Unable to load card. Please sign in again.";
-        setError(message);
-        setLoading(false);
-        localStorage.removeItem("cr_memberCode");
-        localStorage.removeItem("cr_phone");
-        return;
-      }
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          const message = d.message || "Unable to load card. Please sign in again.";
+          setError(message);
+          setLoading(false);
+          localStorage.removeItem("cr_memberCode");
+          localStorage.removeItem("cr_phone");
+          return;
+        }
 
-      const data = await res.json();
-      if (isMountedRef.current) {
-        setCard(data.card || data);
-        setLoading(false);
+        const data = await res.json();
+        if (isMountedRef.current) {
+          setCard(data.card || data);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        console.error("fetchCard error:", err);
+        if (isMountedRef.current) {
+          setError("Server error while loading your card.");
+          setLoading(false);
+        }
       }
-    } catch (err) {
-      console.error("fetchCard error:", err);
-      if (isMountedRef.current) {
-        setError("Server error while loading your card.");
-        setLoading(false);
-      }
-    }
+    };
+
+    fetchCard();
+    return () => controller.abort();
   }, [navigate]);
-
-  // Initial Load
-  useEffect(() => {
-    refreshCardData();
-  }, [refreshCardData]);
 
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
@@ -189,6 +191,7 @@ export default function Card() {
 
   // --- Payment Handler (Razorpay + Backend Logic) ---
   const handlePayment = async () => {
+    // 1. Validation
     if (!payAmount || Number(payAmount) <= 0) {
       setToast({ message: "Please enter a valid amount.", type: "error" });
       return;
@@ -196,6 +199,7 @@ export default function Card() {
 
     setIsPaying(true);
 
+    // 2. Load SDK
     const res = await loadRazorpayScript();
     if (!res) {
       setToast({ message: "Razorpay SDK failed. Check internet.", type: "error" });
@@ -203,6 +207,7 @@ export default function Card() {
       return;
     }
 
+    // 3. Options
     const options = {
       key: "rzp_test_1DP5mmOlF5G5ag", // ✅ Test Key
       amount: Number(payAmount) * 100, 
@@ -213,7 +218,7 @@ export default function Card() {
       
       handler: async function (response) {
         try {
-          // Call Backend to Add Stamp
+          // Call Backend
           const verifyRes = await fetch(`${API_BASE}/api/customer/add-online-stamp`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -227,22 +232,43 @@ export default function Card() {
           const data = await verifyRes.json();
           
           if (verifyRes.ok) {
-            // ✅ AUTO-REFRESH BOARD DATA HERE
-            await refreshCardData(true); // Call refresh silently (no loading spinner)
+            // Update local state immediately for visual feedback
+            if (data.card) setCard(data.card);
 
+            // Determine Message & Refresh Logic
             if (data.stampAdded) {
-               setToast({ message: "Payment Successful! 1 Stamp Added. 🎉", type: "success", duration: 4000 });
+               // SUCCESS: Stamp Added
+               setToast({ message: "Payment Successful! 1 Stamp Added. Refreshing...", type: "success", duration: 3000 });
+               
+               // ✅ AUTO REFRESH PAGE AFTER 2 SECONDS
+               setTimeout(() => {
+                 window.location.reload();
+               }, 2000);
+
             } else {
+               // NO STAMP (Low amount or limit reached)
                if (data.reason === "low_amount") {
                  setToast({ 
-                   message: "Sorry, stamp is only availed if price is ₹1000. Make it next time!", 
+                   message: "Sorry, stamp be availed if price is 1000. Make it next time! (Refreshing...)", 
                    type: "info",
-                   duration: 2500
+                   duration: 3000
                  });
+                 // Still refresh to clear input/ensure state sync
+                 setTimeout(() => {
+                   window.location.reload();
+                 }, 2500);
+
                } else if (data.reason === "limit_reached") {
-                 setToast({ message: "Payment successful! 12th stamp must be claimed manually.", type: "info", duration: 3500 });
+                 setToast({ message: "Payment successful! 12th stamp must be claimed manually. Refreshing...", type: "info", duration: 3000 });
+                 setTimeout(() => {
+                   window.location.reload();
+                 }, 2500);
+
                } else {
                  setToast({ message: "Payment successful.", type: "success" });
+                 setTimeout(() => {
+                   window.location.reload();
+                 }, 2000);
                }
             }
           } else {
@@ -560,7 +586,7 @@ export default function Card() {
                   if (filled) {
                     borderClasses = isFinal 
                         ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
-                        : "border-transparent bg-amber-100 shadow-md";
+                        : "border-amber-200 bg-amber-100 shadow-md"; // Fixed: Circle visible
                   } else {
                     borderClasses = isFinal 
                         ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
@@ -745,7 +771,6 @@ export default function Card() {
       <AnimatePresence>
         {toast && (
           <motion.div 
-            // 1. Center Horizontally using left: 50% and x: -50%
             initial={{ opacity: 0, y: 50, x: "-50%" }} 
             animate={{ opacity: 1, y: 0, x: "-50%" }} 
             exit={{ opacity: 0, y: 20, x: "-50%" }}
@@ -757,17 +782,14 @@ export default function Card() {
                 toast.type === 'error' ? 'bg-red-900/90 text-white border-red-500/50' : 
                 'bg-gray-800/95 text-white border-white/10'}`}>
                
-               {/* Icon */}
                <span className="text-2xl flex-shrink-0">
                  {toast.type === 'success' ? '🎉' : toast.type === 'error' ? '⚠️' : 'ℹ️'}
                </span>
                
-               {/* Message Text */}
                <div className="flex-1">
                  <p className="text-sm font-medium leading-snug">{toast.message}</p>
                </div>
                
-               {/* Close Button */}
                <button onClick={()=>setToast(null)} className="opacity-50 hover:opacity-100 p-1">
                  ✕
                </button>
