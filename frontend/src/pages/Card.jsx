@@ -5,12 +5,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx (Holiday-aware + Mobile-first)
- * Fixed: Logos fall BEHIND the card, DO NOT rotate, and FADE OUT at the middle.
+ * Card.jsx
+ * - Rain falls BEHIND card (z-0), fades at middle.
+ * - Stamps are now the CAKEROVEN LOGO when filled.
+ * - 12th Stamp is UNIQUE (Golden glow, Gift icon).
  */
 
 function getIstDate(now = new Date()) {
-  // IST is UTC + 5:30 -> +330 minutes
   const ist = new Date(now.getTime() + 330 * 60 * 1000);
   return ist;
 }
@@ -19,7 +20,6 @@ function getHolidayInfoForIst(dateIst) {
   const month = dateIst.getUTCMonth();
   const day = dateIst.getUTCDate();
 
-  // Christmas: Dec 25
   if (month === 11 && day === 25) {
     return {
       isHoliday: true,
@@ -30,7 +30,6 @@ function getHolidayInfoForIst(dateIst) {
     };
   }
 
-  // New Year: Dec 31 & Jan 1
   if ((month === 11 && day === 31) || (month === 0 && day === 1)) {
     return {
       isHoliday: true,
@@ -57,7 +56,6 @@ export default function Card() {
   const [holiday, setHoliday] = useState({ isHoliday: false });
   const isMountedRef = useRef(true);
 
-  // Safe mount check
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -65,7 +63,6 @@ export default function Card() {
     };
   }, []);
 
-  // Holiday check
   useEffect(() => {
     const checkHoliday = () => {
       const ist = getIstDate();
@@ -78,7 +75,6 @@ export default function Card() {
     return () => clearInterval(id);
   }, []);
 
-  // Clean URL params
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && window.location?.search) {
@@ -93,7 +89,6 @@ export default function Card() {
     }
   }, []);
 
-  // Fetch Card
   useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
@@ -143,7 +138,6 @@ export default function Card() {
     return () => controller.abort();
   }, [navigate]);
 
-  // Celebration trigger
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
   const isRewardReady = stamps >= 12;
@@ -156,7 +150,6 @@ export default function Card() {
     }
   }, [isRewardReady]);
 
-  // Derived vars
   const memberCode = card?.memberCode || card?.member_code || "—";
   const maskedPhone =
     card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
@@ -171,7 +164,7 @@ export default function Card() {
   const stampVariants = {
     hidden: { scale: 0.92, opacity: 0 },
     show: (i) => ({ scale: 1, opacity: 1, transition: { delay: i * 0.02, duration: 0.22 } }),
-    filledPulse: { scale: [1, 1.06, 1], transition: { duration: 0.42 } },
+    filledPulse: { scale: [1, 1.15, 1], transition: { duration: 0.5, type: "spring" } },
   };
 
   const handleSwitchUser = () => {
@@ -263,40 +256,34 @@ export default function Card() {
 
   // --- Main Card UI ---
   return (
-    // relative overflow-hidden establishes the container
     <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4 relative overflow-hidden">
       
-      {/* ✅ CAKEROVEN LOGO RAIN ANIMATION ✅ */}
-      {/* 1. z-0 (or low z-index) ensures it is BEHIND the card (which is z-10).
-          2. No rotation in initial/animate.
-          3. y stops at 55vh (approx middle of screen) and opacity fades to 0.
-      */}
+      {/* ✅ CAKEROVEN LOGO RAIN ANIMATION (Behind Card) ✅ */}
       <div className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden">
         {Array.from({ length: 15 }).map((_, i) => (
           <motion.img
             key={i}
-            src="/cakeroven-logo.png" // Ensure this image is in your public folder
+            src="/cakeroven-logo.png"
             alt=""
             className="absolute w-12 h-12 md:w-16 md:h-16 object-contain"
             initial={{
               y: -150,
               x: `${Math.random() * 100}vw`,
               opacity: 0,
-              // Removed rotate
             }}
             animate={{
-              y: "55vh", // Stop at roughly the middle of the screen
-              opacity: [0, 1, 1, 0], // Fade in, stay visible, then fade out completely at the end
+              y: "55vh", 
+              opacity: [0, 1, 1, 0], 
             }}
             transition={{
-              duration: 5 + Math.random() * 5, // Random speed
-              delay: i * 0.8, // Stagger start
+              duration: 5 + Math.random() * 5,
+              delay: i * 0.8,
               repeat: Infinity,
               ease: "linear",
             }}
             style={{ 
                left: `${Math.random() * 100}%`,
-               filter: "brightness(0.9) opacity(0.5)" // Lower opacity to make it subtle background
+               filter: "brightness(0.9) opacity(0.5)" 
             }}
           />
         ))}
@@ -306,7 +293,7 @@ export default function Card() {
         initial="hidden"
         animate="enter"
         variants={page}
-        className="w-full max-w-sm md:max-w-xl relative z-10" // z-10 makes it sit ON TOP of the rain
+        className="w-full max-w-sm md:max-w-xl relative z-10"
         aria-labelledby="stamp-card-heading"
       >
         <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-lg text-amber-100 p-4 sm:p-6 md:p-8 overflow-hidden">
@@ -314,7 +301,7 @@ export default function Card() {
           <div className="absolute -left-6 -top-10 w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
           <div className="absolute -right-8 bottom-[-30px] w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
 
-          {/* Header with inline logo */}
+          {/* Header */}
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3 min-w-0">
               {logoInlineVisible && (
@@ -345,7 +332,7 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Holder & phone */}
+          {/* Holder Info */}
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="min-w-0">
               <p className="text-xs text-amber-100/70">Card Holder</p>
@@ -367,7 +354,7 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Progress + rule */}
+          {/* Progress Bar */}
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">
@@ -385,7 +372,7 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Stamp Board (4-per-line) */}
+          {/* Stamp Board */}
           <div className="rounded-2xl bg-[#3d0f0b]/60 border border-amber-100/6 p-3 mb-3 relative">
             <div className="flex items-start justify-between mb-2 gap-2">
               <div className="text-sm text-amber-100/80">
@@ -399,36 +386,68 @@ export default function Card() {
                   </p>
                 )}
               </div>
-
               <span className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20">
                 BOARD
               </span>
             </div>
 
-            <div className="grid grid-cols-4 gap-2 justify-center">
+            <div className="grid grid-cols-4 gap-3 justify-center">
               <AnimatePresence initial={false}>
                 {Array.from({ length: 12 }).map((_, i) => {
                   const index = i + 1;
                   const filled = stamps >= index;
+                  const isFinal = index === 12;
+
+                  // Define base classes
+                  // Standard stamp size: h-10 w-10
+                  // 12th stamp size: h-12 w-12 (slightly bigger) + Golden styling
+                  const sizeClasses = isFinal ? "h-12 w-12 sm:h-14 sm:w-14" : "h-10 w-10 md:h-12 md:w-12";
+                  
+                  let borderClasses = "";
+                  if (filled) {
+                    borderClasses = isFinal 
+                        ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
+                        : "border-transparent bg-amber-100 shadow-md";
+                  } else {
+                     // Empty state
+                    borderClasses = isFinal 
+                        ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
+                        : "border-amber-100/20 bg-transparent hover:bg-amber-100/6";
+                  }
+
                   return (
-                    <motion.button
+                    <motion.div
                       key={index}
                       aria-label={`Stamp ${index} ${filled ? "collected" : "empty"}`}
                       initial="hidden"
                       animate={filled ? "filledPulse" : "show"}
                       variants={stampVariants}
                       custom={i}
-                      whileTap={{ scale: 0.96 }}
-                      className={`flex items-center justify-center h-10 w-10 md:h-12 md:w-12 rounded-full border transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-200/20 text-sm ${
-                        filled
-                          ? "bg-amber-100 text-[#501914] border-transparent shadow-[0_6px_18px_rgba(0,0,0,0.45)]"
-                          : "bg-transparent text-amber-100/80 border-amber-100/20 hover:bg-amber-100/6"
-                      }`}
+                      className={`relative flex items-center justify-center rounded-full border transition-all ${sizeClasses} ${borderClasses}`}
                     >
-                      <span className="font-semibold pointer-events-none select-none text-xs md:text-sm">
-                        {index}
-                      </span>
-                    </motion.button>
+                      {filled ? (
+                         /* ✅ FILLED STATE: Render Logo */
+                         /* If it's the 12th, we add a golden ring animation around the logo */
+                        <div className="relative w-full h-full p-1.5 flex items-center justify-center">
+                           <motion.img 
+                             src="/cakeroven-logo.png"
+                             alt="Stamped"
+                             className="w-full h-full object-contain drop-shadow-sm"
+                             initial={{ scale: 0, rotate: -45 }}
+                             animate={{ scale: 1, rotate: 0 }}
+                             transition={{ type: "spring", stiffness: 200 }}
+                           />
+                           {isFinal && (
+                             <div className="absolute inset-0 rounded-full border-2 border-amber-300 animate-ping opacity-20" />
+                           )}
+                        </div>
+                      ) : (
+                        /* ❌ EMPTY STATE */
+                        <span className={`font-semibold pointer-events-none select-none ${isFinal ? "text-xl" : "text-xs md:text-sm"} text-amber-100/80`}>
+                          {isFinal ? "🎁" : index}
+                        </span>
+                      )}
+                    </motion.div>
                   );
                 })}
               </AnimatePresence>
@@ -446,10 +465,12 @@ export default function Card() {
               <span className="font-semibold">1 stamp</span>.
             </p>
             <p>
-              After collecting 12 stamps, you’re eligible for a complimentary
-              CakeRoven treat.
+              After collecting 11 stamps, you’re eligible for a complimentary
+              CakeRoven treat With Rs. 2000 Worth Free Food and 12th stamp. 
             </p>
-            <p>A Gift Hamper / A Cake.</p>
+            <p>
+              And on 12th stamp time no need make any type of bill.
+            </p>
 
             <div className="flex items-center gap-2 mt-2">
               <button
