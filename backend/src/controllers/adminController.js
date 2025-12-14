@@ -1,4 +1,3 @@
-// backend/src/controllers/adminController.js
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -34,6 +33,7 @@ exports.login = async (req, res) => {
   }
 };
 
+// ✅ UPDATED: Fetches stamp_history so dates appear in Dashboard
 exports.getCustomers = async (req, res) => {
   try {
     const q = `
@@ -71,9 +71,11 @@ exports.addStamp = async (req, res) => {
     if (!memberCode) return res.status(400).json({ message: "memberCode required" });
 
     const result = await db.withClient(async (client) => {
+      // 1) lock user row
       const user = await lockUserByMemberCode(client, memberCode);
       if (!user) throw { status: 404, message: "Member not found" };
 
+      // 2) lock loyalty account row (if exists)
       const laRes = await client.query(
         `SELECT user_id, current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE`,
         [user.id]
@@ -83,33 +85,42 @@ exports.addStamp = async (req, res) => {
       let rewards = 0;
 
       if (laRes.rows.length === 0) {
+        // create loyalty row
         await client.query(
           `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards, updated_at)
            VALUES ($1, 0, 0, NOW())`,
           [user.id]
         );
+        current = 0;
+        rewards = 0;
       } else {
         current = Number(laRes.rows[0].current_stamps || 0);
         rewards = Number(laRes.rows[0].total_rewards || 0);
       }
 
+      // add one stamp
       current += 1;
       let awarded = false;
       if (current >= 12) {
-        current = 0; // RESET Logic
+        // award
+        current = 0;
         rewards += 1;
         awarded = true;
       }
 
+      // update loyalty_accounts
       await client.query(
         `UPDATE loyalty_accounts SET current_stamps = $1, total_rewards = $2, updated_at = NOW() WHERE user_id = $3`,
         [current, rewards, user.id]
       );
 
+      // if awarded insert reward row
       if (awarded) {
         await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [user.id]);
       }
 
+      // record into stamps_history
+      // If we reset to 0, we still record '12' as the index for history purposes
       const recordedStampIndex = current === 0 ? 12 : current;
       await client.query(
         `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
@@ -132,7 +143,7 @@ exports.addStamp = async (req, res) => {
   } catch (err) {
     console.error("addStamp error:", err);
     if (err && err.status) return res.status(err.status).json({ message: err.message });
-    return res.status(500).json({ message: "Server error adding stamp" });
+    return res.status(500).json({ message: "Server error adding stamp", error: (err && err.message) || err });
   }
 };
 
@@ -152,22 +163,31 @@ exports.removeStamp = async (req, res) => {
 
       let current = 0;
       let rewards = 0;
-      if (laRes.rows.length === 0) return { card: { memberCode: user.member_code, currentStamps: 0, totalRewards: 0 } };
-      
-      current = Number(laRes.rows[0].current_stamps || 0);
-      rewards = Number(laRes.rows[0].total_rewards || 0);
+      if (laRes.rows.length === 0) {
+        return {
+          card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: 0, totalRewards: 0 },
+        };
+      } else {
+        current = Number(laRes.rows[0].current_stamps || 0);
+        rewards = Number(laRes.rows[0].total_rewards || 0);
+      }
 
       if (current > 0) {
         current -= 1;
       } else if (rewards > 0) {
+        // undo a reward
         rewards -= 1;
         current = 11;
         await client.query(
-          `DELETE FROM rewards WHERE id = (SELECT id FROM rewards WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1)`,
+          `DELETE FROM rewards WHERE id = (
+             SELECT id FROM rewards WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1
+           )`,
           [user.id]
         );
       } else {
-        return { card: { memberCode: user.member_code, currentStamps: current, totalRewards: rewards } };
+        return {
+          card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: current, totalRewards: rewards },
+        };
       }
 
       await client.query(
@@ -189,17 +209,24 @@ exports.removeStamp = async (req, res) => {
   } catch (err) {
     console.error("removeStamp error:", err);
     if (err && err.status) return res.status(err.status).json({ message: err.message });
-    return res.status(500).json({ message: "Server error removing stamp" });
+    return res.status(500).json({ message: "Server error removing stamp", error: (err && err.message) || err });
   }
 };
 
 exports.getRewardHistoryFor = async (req, res) => {
   try {
     const { memberCode } = req.params;
-    const q = `SELECT r.id, r.issued_at, u.member_code, u.name, u.phone FROM rewards r JOIN users u ON u.id = r.user_id WHERE u.member_code = $1 ORDER BY r.issued_at ASC`;
+    if (!memberCode) return res.status(400).json({ message: "memberCode required" });
+
+    const q = `SELECT r.id, r.issued_at, u.member_code, u.name, u.phone
+               FROM rewards r
+               JOIN users u ON u.id = r.user_id
+               WHERE u.member_code = $1
+               ORDER BY r.issued_at ASC`;
     const r = await db.query(q, [memberCode]);
     return res.json({ rewards: r.rows });
   } catch (err) {
+    console.error("getRewardHistoryFor error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -207,20 +234,44 @@ exports.getRewardHistoryFor = async (req, res) => {
 exports.getInsights = async (req, res) => {
   try {
     const stampsQ = `
-      SELECT to_char(day::date, 'YYYY-MM-DD') as date, COALESCE(sum(cnt),0)::int as stamps
-      FROM (SELECT (created_at::date) as day, count(*) as cnt FROM stamps_history WHERE created_at >= (current_date - INTERVAL '13 days') GROUP BY day) t
-      RIGHT JOIN (SELECT generate_series((current_date - INTERVAL '13 days')::date, current_date::date, '1 day') AS day) g USING (day)
-      GROUP BY day ORDER BY day;
+      SELECT to_char(day::date, 'YYYY-MM-DD') as date,
+             COALESCE(sum(cnt),0)::int as stamps
+      FROM (
+        SELECT (created_at::date) as day, count(*) as cnt
+        FROM stamps_history
+        WHERE created_at >= (current_date - INTERVAL '13 days')
+        GROUP BY day
+      ) t
+      RIGHT JOIN (
+        SELECT generate_series((current_date - INTERVAL '13 days')::date, current_date::date, '1 day') AS day
+      ) g USING (day)
+      GROUP BY day
+      ORDER BY day;
     `;
+
     const rewardsQ = `
-      SELECT to_char(month, 'Mon YYYY') AS month, COALESCE(counts,0)::int AS rewards
-      FROM (SELECT date_trunc('month', (current_date - (interval '5 months'))) + (n || ' months')::interval AS month FROM generate_series(0,5) n) months
-      LEFT JOIN (SELECT date_trunc('month', issued_at) as m, count(*) as counts FROM rewards WHERE issued_at >= (date_trunc('month', current_date) - INTERVAL '5 months') GROUP BY m) r ON months.month = r.m
+      SELECT to_char(month, 'Mon YYYY') AS month,
+             COALESCE(counts,0)::int AS rewards
+      FROM (
+        SELECT date_trunc('month', (current_date - (interval '5 months'))) + (n || ' months')::interval AS month
+        FROM generate_series(0,5) n
+      ) months
+      LEFT JOIN (
+        SELECT date_trunc('month', issued_at) as m, count(*) as counts
+        FROM rewards
+        WHERE issued_at >= (date_trunc('month', current_date) - INTERVAL '5 months')
+        GROUP BY m
+      ) r ON months.month = r.m
       ORDER BY months.month;
     `;
+
     const [stampsRes, rewardsRes] = await Promise.all([db.query(stampsQ), db.query(rewardsQ)]);
-    return res.json({ stamps_over_time: stampsRes.rows, rewards_per_month: rewardsRes.rows });
+    const stampsOverTime = stampsRes.rows.map((r) => ({ date: r.date, stamps: Number(r.stamps) }));
+    const rewardsPerMonth = rewardsRes.rows.map((r) => ({ month: r.month, rewards: Number(r.rewards) }));
+
+    return res.json({ stamps_over_time: stampsOverTime, rewards_per_month: rewardsPerMonth });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("getInsights error:", err);
+    return res.status(500).json({ message: "Server error fetching insights", error: err.message });
   }
 };
