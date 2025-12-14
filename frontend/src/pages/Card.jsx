@@ -9,7 +9,7 @@ import { API_BASE } from "../apiConfig";
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 12th Stamp is UNIQUE.
- * - NEW: "₹2000 Food FREE" added to the right of Name/Phone (circled area).
+ * - NEW: Payment Gateway UI (Razorpay Ready).
  */
 
 function getIstDate(now = new Date()) {
@@ -44,6 +44,17 @@ function getHolidayInfoForIst(dateIst) {
   return { isHoliday: false };
 }
 
+// --- Razorpay Loader Helper ---
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
 export default function Card() {
   const navigate = useNavigate();
 
@@ -55,6 +66,11 @@ export default function Card() {
   const [celebrate, setCelebrate] = useState(false);
   const [logoInlineVisible, setLogoInlineVisible] = useState(true);
   const [holiday, setHoliday] = useState({ isHoliday: false });
+  
+  // Payment State
+  const [payAmount, setPayAmount] = useState("");
+  const [isPaying, setIsPaying] = useState(false);
+
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -151,6 +167,79 @@ export default function Card() {
     }
   }, [isRewardReady]);
 
+  // ---------- Handlers ----------
+
+  const handleSwitchUser = () => {
+    localStorage.removeItem("cr_memberCode");
+    localStorage.removeItem("cr_phone");
+    navigate("/start", { replace: true });
+  };
+  const handleInlineLogoError = () => setLogoInlineVisible(false);
+
+  // --- Payment Handler (Razorpay) ---
+  const handlePayment = async () => {
+    if (!payAmount || Number(payAmount) < 1) {
+      alert("Please enter a valid amount (minimum ₹1)");
+      return;
+    }
+
+    setIsPaying(true);
+
+    // 1. Load the SDK
+    const res = await loadRazorpayScript();
+    if (!res) {
+      alert("Razorpay SDK failed to load. Please check your internet connection.");
+      setIsPaying(false);
+      return;
+    }
+
+    // 2. Setup Options 
+    // TODO: Once verified, you will replace "YOUR_TEST_KEY_ID" with your actual Razorpay Key ID
+    // TODO: You will likely need to make an API call here to your backend to create an 'Order' first
+    
+    const options = {
+      key: "YOUR_TEST_KEY_ID", // Enter your Key ID here later
+      amount: Number(payAmount) * 100, // Amount is in currency subunits. Default currency is INR. Hence, 50000 refers to 50000 paise
+      currency: "INR",
+      name: "CakeRoven",
+      description: "Loyalty Card Payment",
+      image: "https://your-domain.com/cakeroven-logo.png", // Optional logo
+      handler: function (response) {
+        // This runs on success
+        alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
+        // Here you would call your backend to save the payment and update stamps
+        setPayAmount("");
+      },
+      prefill: {
+        name: card?.name || "",
+        contact: card?.phone || "",
+      },
+      theme: {
+        color: "#d97706", // Matches your Amber theme
+      },
+    };
+
+    try {
+      // NOTE: Because the account is under verification, this might not open the live modal yet.
+      // For now, let's simulate the action so you can see the UI working.
+      console.log("Initializing Razorpay with options:", options);
+      
+      // Uncomment this line below when you have your Key ID:
+      // const paymentObject = new window.Razorpay(options);
+      // paymentObject.open();
+
+      // TEMP: Alert for testing UI
+      setTimeout(() => {
+        alert(`Payment gateway logic triggered for ₹${payAmount}. \n(Integration pending Razorpay verification)`);
+        setIsPaying(false);
+      }, 500);
+
+    } catch (error) {
+      console.error("Payment Error:", error);
+      setIsPaying(false);
+    }
+  };
+
   const memberCode = card?.memberCode || card?.member_code || "—";
   const maskedPhone =
     card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
@@ -167,13 +256,6 @@ export default function Card() {
     show: (i) => ({ scale: 1, opacity: 1, transition: { delay: i * 0.02, duration: 0.22 } }),
     filledPulse: { scale: [1, 1.15, 1], transition: { duration: 0.5, type: "spring" } },
   };
-
-  const handleSwitchUser = () => {
-    localStorage.removeItem("cr_memberCode");
-    localStorage.removeItem("cr_phone");
-    navigate("/start", { replace: true });
-  };
-  const handleInlineLogoError = () => setLogoInlineVisible(false);
 
   // --- Holiday View ---
   if (holiday?.isHoliday) {
@@ -333,11 +415,8 @@ export default function Card() {
             </div>
           </div>
 
-          {/* ✅ HOLDER INFO + NEW ANIMATED BADGE AREA ✅ */}
-          {/* We use flex row to put Name/Phone on LEFT and Badge on RIGHT (Circled area) */}
+          {/* Holder Info */}
           <div className="mb-4 flex items-end justify-between gap-2">
-            
-            {/* LEFT SIDE: Name and Phone Stacked */}
             <div className="flex flex-col gap-1.5 min-w-0">
               <div className="min-w-0">
                 <p className="text-xs text-amber-100/70">Card Holder</p>
@@ -359,7 +438,7 @@ export default function Card() {
               </div>
             </div>
 
-            {/* RIGHT SIDE (Circled Area): Animated Promo Badge */}
+            {/* Badge */}
             <motion.div
               animate={{ 
                 scale: [1, 1.05, 1],
@@ -384,7 +463,6 @@ export default function Card() {
                 </div>
               </div>
             </motion.div>
-
           </div>
 
           {/* Progress Bar */}
@@ -431,7 +509,6 @@ export default function Card() {
                   const filled = stamps >= index;
                   const isFinal = index === 12;
 
-                  // Define base classes
                   const sizeClasses = isFinal ? "h-12 w-12 sm:h-14 sm:w-14" : "h-10 w-10 md:h-12 md:w-12";
                   
                   let borderClasses = "";
@@ -440,7 +517,6 @@ export default function Card() {
                         ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
                         : "border-transparent bg-amber-100 shadow-md";
                   } else {
-                      // Empty state
                     borderClasses = isFinal 
                         ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
                         : "border-amber-100/20 bg-transparent hover:bg-amber-100/6";
@@ -457,8 +533,7 @@ export default function Card() {
                       className={`relative flex items-center justify-center rounded-full border transition-all ${sizeClasses} ${borderClasses}`}
                     >
                       {filled ? (
-                          /* ✅ FILLED STATE: Render Logo */
-                         <div className="relative w-full h-full p-1.5 flex items-center justify-center">
+                          <div className="relative w-full h-full p-1.5 flex items-center justify-center">
                            <motion.img 
                              src="/cakeroven-logo.png"
                              alt="Stamped"
@@ -472,7 +547,6 @@ export default function Card() {
                            )}
                         </div>
                       ) : (
-                        /* ❌ EMPTY STATE */
                         <span className={`font-semibold pointer-events-none select-none ${isFinal ? "text-xl" : "text-xs md:text-sm"} text-amber-100/80`}>
                           {isFinal ? "🎁" : index}
                         </span>
@@ -482,24 +556,78 @@ export default function Card() {
                 })}
               </AnimatePresence>
             </div>
-
             {/* inner border */}
             <div className="pointer-events-none absolute inset-0 rounded-2xl border border-amber-100/8 m-0.5" />
           </div>
 
+          {/* ======================================================== */}
+          {/* ✅ NEW SECTION: Online Payment (Razorpay Placeholder) ✅ */}
+          {/* ======================================================== */}
+          <div className="rounded-2xl bg-gradient-to-br from-black/20 to-black/40 border border-amber-100/10 p-4 mb-4 backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-amber-100 flex items-center gap-2">
+                <span className="bg-amber-500/10 p-1 rounded-md">💳</span>
+                Make a Payment
+              </h3>
+              <span className="text-[10px] uppercase text-amber-100/40 tracking-wider">Secure</span>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1 group">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-100/50 font-sans">₹</span>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  min="1"
+                  className="w-full pl-7 pr-3 py-2.5 rounded-xl bg-black/20 border border-amber-100/20 text-amber-100 placeholder-amber-100/20 focus:outline-none focus:border-amber-400/60 focus:bg-black/40 transition-all font-mono"
+                />
+              </div>
+              
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={handlePayment}
+                disabled={isPaying}
+                className="relative px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 text-[#3d0f0b] font-bold text-sm shadow-lg shadow-amber-900/40 hover:brightness-110 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[120px]"
+              >
+                {isPaying ? (
+                  <>
+                    <div className="h-4 w-4 rounded-full border-2 border-[#3d0f0b]/30 border-t-[#3d0f0b] animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  "Pay Now"
+                )}
+              </motion.button>
+            </div>
+            
+            {/* Quick Select Helper */}
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {[1000, 2000, 5000].map((amt) => (
+                <button
+                  key={amt}
+                  onClick={() => setPayAmount(amt.toString())}
+                  className="px-3 py-1 rounded-lg border border-amber-100/10 bg-amber-100/5 text-xs text-amber-100/60 hover:bg-amber-100/10 hover:border-amber-100/30 transition"
+                >
+                  ₹{amt}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* ======================================================== */}
+
+
           {/* Info & actions */}
           <div className="text-xs text-amber-100/75 space-y-2">
             <p>
-              Cash: Show at counter, Online: Pay through this CRM website of
-              <span className="font-semibold">₹1000 or more</span> earns{" "}
+              Cash: Show at counter, Online: Pay using the box above. 
+              <span className="font-semibold"> ₹1000 or more</span> earns{" "}
               <span className="font-semibold">1 stamp</span>.
             </p>
             <p>
               On your 12th visit, enjoy up to ₹2000 worth of food FREE.
-              If the bill exceeds ₹2000, only the balance amount is payable, Unused free value does not carry forward.
-            </p>
-            <p>
-              Only 1 bill = 1 stamp. No bill splitting allowed.
+              If the bill exceeds ₹2000, only the balance amount is payable.
             </p>
 
             <div className="flex items-center gap-2 mt-2">
