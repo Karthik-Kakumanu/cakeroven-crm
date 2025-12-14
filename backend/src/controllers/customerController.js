@@ -138,13 +138,15 @@ exports.getCard = async (req, res) => {
   }
 };
 
-// ✅ NEW: Handles online payments (Auto-stamp for <11, Manual for 12)
+// ✅ UPDATED: Handles payments of ANY amount with smart logic
+// - < 1000: No stamp, return 'low_amount' reason
+// - >= 1000: Add stamp (unless limit reached)
 exports.addOnlineStamp = async (req, res) => {
   const { memberCode, amount, paymentId } = req.body;
 
-  // Basic Validation
-  if (!memberCode || !amount || amount < 1000) {
-    return res.status(400).json({ message: "Invalid request. Amount must be >= 1000." });
+  // 1. Basic Validation (Allow any positive amount)
+  if (!memberCode || !amount || amount <= 0) {
+    return res.status(400).json({ message: "Invalid request." });
   }
 
   try {
@@ -162,38 +164,53 @@ exports.addOnlineStamp = async (req, res) => {
         currentStamps = Number(lRes.rows[0].current_stamps || 0);
         totalRewards = Number(lRes.rows[0].total_rewards || 0);
       } else {
-         // Should usually exist if registered, but safeguard:
          await client.query("INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards) VALUES ($1,0,0)", [user.id]);
       }
 
-      // 3. Logic: Only auto-add if stamps < 11.
-      // If stamps == 11, the 12th must be manual.
-      if (currentStamps >= 11) {
+      // --- LOGIC SCENARIOS ---
+
+      // Scenario A: Amount is less than 1000 -> No Stamp
+      if (amount < 1000) {
         return {
           status: 200,
           body: {
-            message: "Payment recorded. Final stamp (12th) must be added manually in-store to claim reward.",
-            card: { memberCode, name: user.name, phone: user.phone, currentStamps, totalRewards },
-            stampAdded: false
+            message: "Payment successful.",
+            card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps, totalRewards },
+            stampAdded: false,
+            reason: "low_amount"
           }
         };
       }
 
-      // 4. Add Stamp
+      // Scenario B: Limit Reached (11 stamps) -> No Stamp (12th is manual)
+      if (currentStamps >= 11) {
+        return {
+          status: 200,
+          body: {
+            message: "Payment recorded.",
+            card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps, totalRewards },
+            stampAdded: false,
+            reason: "limit_reached"
+          }
+        };
+      }
+
+      // Scenario C: Amount >= 1000 AND Stamps < 11 -> Add Stamp
       const newStamps = currentStamps + 1;
+      
+      // Update DB
       await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
       
-      // 5. Record History (So it shows in Admin Dashboard with Date)
+      // Record History (Vital for Admin Dashboard)
       await client.query("INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())", [user.id, newStamps]);
-
-      // 6. Optional: Log the payment itself if you have a payments table (skipping for now based on your files)
 
       return {
         status: 200,
         body: {
-          message: "Payment successful! Stamp added automatically.",
-          card: { memberCode, name: user.name, phone: user.phone, currentStamps: newStamps, totalRewards },
-          stampAdded: true
+          message: "Stamp added automatically.",
+          card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: newStamps, totalRewards },
+          stampAdded: true,
+          reason: "success"
         }
       };
     });
@@ -202,6 +219,6 @@ exports.addOnlineStamp = async (req, res) => {
 
   } catch (err) {
     console.error("addOnlineStamp error:", err);
-    return res.status(500).json({ message: "Server error processing payment stamp." });
+    return res.status(500).json({ message: "Server error processing payment." });
   }
 };
