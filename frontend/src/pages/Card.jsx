@@ -9,8 +9,10 @@ import { API_BASE } from "../apiConfig";
  * - Rain falls BEHIND card (z-0), fades at middle.
  * - Stamps are now the CAKEROVEN LOGO when filled.
  * - 12th Stamp is UNIQUE (Golden glow, Gift icon).
+ * - ✨ NEW: Added "Rs. 2000 WORTH FREE FOOD!" with fireworks animation. ✨
  */
 
+// --- Holiday Logic ---
 function getIstDate(now = new Date()) {
   const ist = new Date(now.getTime() + 330 * 60 * 1000);
   return ist;
@@ -43,6 +45,75 @@ function getHolidayInfoForIst(dateIst) {
   return { isHoliday: false };
 }
 
+// --- New Component: Fireworks Message Animation ---
+const FireworksMessage = () => {
+  // Create an array for the spark particles
+  const sparks = Array.from({ length: 30 });
+
+  const sparkVariants = {
+    initial: { opacity: 0, scale: 0, x: 0, y: 0 },
+    animate: (i) => {
+      const angle = (i / sparks.length) * 360;
+      const radius = 80 + Math.random() * 60; // Random distance
+      const x = Math.cos((angle * Math.PI) / 180) * radius;
+      const y = Math.sin((angle * Math.PI) / 180) * radius;
+      const duration = 1.5 + Math.random();
+
+      return {
+        opacity: [0, 1, 0],
+        scale: [0, 1.2, 0],
+        x: x,
+        y: y,
+        transition: {
+          duration: duration,
+          repeat: Infinity,
+          repeatType: "loop",
+          ease: "easeOut",
+        },
+      };
+    },
+  };
+
+  return (
+    <div className="relative flex items-center justify-center py-6 my-2 overflow-visible">
+      {/* Fireworks Sparks */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        {sparks.map((_, i) => (
+          <motion.div
+            key={i}
+            custom={i}
+            variants={sparkVariants}
+            initial="initial"
+            animate="animate"
+            className="absolute w-1.5 h-1.5 bg-amber-300 rounded-full shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+            style={{
+              // Add some variation in size and color
+              width: Math.random() > 0.5 ? '4px' : '6px',
+              height: Math.random() > 0.5 ? '4px' : '6px',
+              backgroundColor: Math.random() > 0.7 ? '#FBBF24' : '#FCD34D', // amber-400 or amber-300
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Main Text with Shimmer Effect */}
+      <motion.h2
+        initial={{ scale: 0.95 }}
+        animate={{ scale: [0.95, 1.02, 0.95] }}
+        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        className="relative z-10 text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 text-center drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]"
+        style={{
+            textShadow: '0 0 15px rgba(251, 191, 36, 0.5), 0 0 30px rgba(251, 191, 36, 0.3)'
+        }}
+      >
+        ✨ Rs. 2000 WORTH <br /> FREE FOOD! ✨
+      </motion.h2>
+    </div>
+  );
+};
+
+
+// --- Main Card Component ---
 export default function Card() {
   const navigate = useNavigate();
 
@@ -333,7 +404,7 @@ export default function Card() {
           </div>
 
           {/* Holder Info */}
-          <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="mb-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="min-w-0">
               <p className="text-xs text-amber-100/70">Card Holder</p>
               <p className="text-base font-semibold truncate">{card?.name || "—"}</p>
@@ -353,6 +424,10 @@ export default function Card() {
               </button>
             </div>
           </div>
+
+          {/* ✨ NEW: Fireworks Message Animation ✨ */}
+          {/* This is placed between the phone number and the progress bar */}
+          <FireworksMessage />
 
           {/* Progress Bar */}
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
