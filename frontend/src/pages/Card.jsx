@@ -6,12 +6,15 @@ import { API_BASE } from "../apiConfig";
 
 /**
  * Card.jsx
- * - Rain falls BEHIND card.
+ * - Rain falls BEHIND card (z-0).
+ * - Stamps are CAKEROVEN LOGO when filled.
+ * - 12th Stamp is UNIQUE.
  * - Payment: Accepts ANY amount.
  * - Logic: 
  * - < 1000: No stamp, shows specific "Sorry" toast (2s).
  * - >= 1000: Adds stamp (unless 12th).
- * - UI: Responsive Badge, Custom Toast Notification.
+ * - FIXED: Responsive "Food Free" Badge.
+ * - Professional Toast Notifications.
  */
 
 function getIstDate(now = new Date()) {
@@ -28,7 +31,8 @@ function getHolidayInfoForIst(dateIst) {
       isHoliday: true,
       key: "christmas",
       title: "🎄 Happy Christmas",
-      message: "Sorry for the inconvenience on Christmas day. Stamp access is temporarily unavailable.",
+      message:
+        "Sorry for the inconvenience on Christmas day. Stamp access is temporarily unavailable. We'll be back shortly — enjoy the celebration!",
     };
   }
 
@@ -37,7 +41,8 @@ function getHolidayInfoForIst(dateIst) {
       isHoliday: true,
       key: "newyear",
       title: "🎉 Happy New Year",
-      message: "Stamp access is temporarily unavailable for the New Year period.",
+      message:
+        "We're celebrating the New Year! Stamp access is temporarily unavailable for the New Year period. Wishing you a fantastic year ahead!",
     };
   }
 
@@ -71,15 +76,15 @@ export default function Card() {
   const [payAmount, setPayAmount] = useState("");
   const [isPaying, setIsPaying] = useState(false);
 
-  // Toast State { message, type, duration }
-  const [toast, setToast] = useState(null);
+  // Notification State (Toast)
+  const [toast, setToast] = useState(null); // { message, type: 'success'|'info'|'error', duration: ms }
 
   const isMountedRef = useRef(true);
 
-  // Auto-dismiss Toast
+  // Auto-dismiss Toast Logic
   useEffect(() => {
     if (toast) {
-      const duration = toast.duration || 3000;
+      const duration = toast.duration || 3500;
       const timer = setTimeout(() => setToast(null), duration);
       return () => clearTimeout(timer);
     }
@@ -105,6 +110,20 @@ export default function Card() {
   }, []);
 
   useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && window.location?.search) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("member")) {
+          url.searchParams.delete("member");
+          window.history.replaceState({}, "", url.pathname);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
     const memberCode = localStorage.getItem("cr_memberCode");
     const phone = localStorage.getItem("cr_phone");
 
@@ -119,7 +138,9 @@ export default function Card() {
       setLoading(true);
       setError("");
       try {
-        const url = `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(phone)}`;
+        const url = `${API_BASE}/api/customer/card/${memberCode}?phone=${encodeURIComponent(
+          phone
+        )}`;
         const res = await fetch(url, { signal: controller.signal });
 
         if (!res.ok) {
@@ -172,9 +193,9 @@ export default function Card() {
   };
   const handleInlineLogoError = () => setLogoInlineVisible(false);
 
-  // --- Payment Handler (Razorpay + Backend Auto Stamp) ---
+  // --- Payment Handler (Razorpay + Backend Logic) ---
   const handlePayment = async () => {
-    // 1. Validation (Accepts ANY amount > 0)
+    // 1. Validation (Allows ANY amount > 0)
     if (!payAmount || Number(payAmount) <= 0) {
       setToast({ message: "Please enter a valid amount.", type: "error" });
       return;
@@ -185,7 +206,7 @@ export default function Card() {
     // 2. Load the SDK
     const res = await loadRazorpayScript();
     if (!res) {
-      setToast({ message: "Network error. Check connection.", type: "error" });
+      setToast({ message: "Razorpay SDK failed to load. Check internet.", type: "error" });
       setIsPaying(false);
       return;
     }
@@ -199,7 +220,7 @@ export default function Card() {
       description: "Loyalty Stamp Payment",
       image: `${window.location.origin}/cakeroven-logo.png`, 
       
-      // ✅ Success Handler calling the Endpoint
+      // ✅ Success Handler calling the NEW Endpoint
       handler: async function (response) {
         try {
           const verifyRes = await fetch(`${API_BASE}/api/customer/add-online-stamp`, {
@@ -215,33 +236,33 @@ export default function Card() {
           const data = await verifyRes.json();
           
           if (verifyRes.ok) {
-            // Update Card UI
+            // Update Card State Immediately
             if (data.card) setCard(data.card);
 
             if (data.stampAdded) {
-               // Success: 4 seconds toast
-               setToast({ message: "Payment Successful! 🎉 1 Stamp Added.", type: "success", duration: 4000 });
+               // Success: 1 Stamp Added
+               setToast({ message: "Payment Successful! 1 Stamp Added. 🎉", type: "success", duration: 4000 });
             } else {
-               // Logic for NO stamp
+               // Logic for NO stamp added (Low amount or Limit reached)
                if (data.reason === "low_amount") {
-                 // ** SPECIFIC MESSAGE requested by user **
+                 // ** Specific Message for < 1000 **
                  setToast({ 
                    message: "Sorry, stamp be availed if price is 1000. Make it next time!", 
                    type: "info",
                    duration: 2000 // Disappears after 2 seconds
                  });
                } else if (data.reason === "limit_reached") {
-                 setToast({ message: "Payment successful! Note: 12th stamp must be claimed manually.", type: "info", duration: 4000 });
+                 setToast({ message: "Payment successful! 12th stamp must be claimed manually.", type: "info", duration: 3500 });
                } else {
                  setToast({ message: "Payment successful.", type: "success" });
                }
             }
           } else {
-              setToast({ message: data.message || "Payment succeeded but update failed.", type: "error" });
+             setToast({ message: data.message || "Payment succeeded but stamp update failed.", type: "error" });
           }
         } catch (err) {
           console.error("Backend stamp error", err);
-          setToast({ message: "Network error. Show Payment ID to Admin.", type: "error" });
+          setToast({ message: "Network error. Please contact Admin.", type: "error" });
         } finally {
           setIsPaying(false);
           setPayAmount("");
@@ -261,7 +282,7 @@ export default function Card() {
       paymentObject.open();
       
       paymentObject.on('payment.failed', function (response){
-          setToast({ message: "Payment Cancelled or Failed.", type: "error" });
+          setToast({ message: "Payment Failed: " + response.error.description, type: "error" });
           setIsPaying(false);
       });
 
@@ -451,7 +472,7 @@ export default function Card() {
           {/* ======================================================== */}
           <div className="mb-6 flex flex-row items-end justify-between gap-2 relative">
             
-            {/* LEFT SIDE: Name and Phone */}
+            {/* LEFT SIDE: Name and Phone (Takes available space) */}
             <div className="flex flex-col gap-1 min-w-0 flex-1">
               <div className="min-w-0">
                 <p className="text-xs text-amber-100/70">Card Holder</p>
@@ -473,7 +494,7 @@ export default function Card() {
               </div>
             </div>
 
-            {/* RIGHT SIDE: Animated Promo Badge */}
+            {/* RIGHT SIDE: Animated Promo Badge (Scaled down on mobile to prevent overlap) */}
             <motion.div
               animate={{ 
                 scale: [1, 1.02, 1],
@@ -599,7 +620,7 @@ export default function Card() {
           </div>
 
           {/* ======================================================== */}
-          {/* ✅ PAYMENT SECTION (UPDATED: Any Amount + 500/1000/2000/5000) ✅ */}
+          {/* ✅ PAYMENT SECTION (Razorpay + Auto Stamp) ✅ */}
           {/* ======================================================== */}
           <div className="rounded-2xl bg-gradient-to-br from-black/20 to-black/40 border border-amber-100/10 p-4 mb-4 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
@@ -632,7 +653,7 @@ export default function Card() {
                 {isPaying ? (
                   <>
                     <div className="h-4 w-4 rounded-full border-2 border-[#3d0f0b]/30 border-t-[#3d0f0b] animate-spin" />
-                    <span>Pay...</span>
+                    <span>Processing...</span>
                   </>
                 ) : (
                   "Pay Now"
@@ -640,13 +661,13 @@ export default function Card() {
               </motion.button>
             </div>
             
-            {/* Quick Select Helper: 500, 1000, 2000, 5000 */}
+            {/* Quick Select Helper */}
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
               {[500, 1000, 2000, 5000].map((amt) => (
                 <button
                   key={amt}
                   onClick={() => setPayAmount(amt.toString())}
-                  className="px-3 py-1 rounded-lg border border-amber-100/10 bg-amber-100/5 text-xs text-amber-100/60 hover:bg-amber-100/10 hover:border-amber-100/30 transition whitespace-nowrap"
+                  className="px-3 py-1 rounded-lg border border-amber-100/10 bg-amber-100/5 text-xs text-amber-100/60 hover:bg-amber-100/10 hover:border-amber-100/30 transition"
                 >
                   ₹{amt}
                 </button>
@@ -734,7 +755,7 @@ export default function Card() {
         </AnimatePresence>
       </motion.section>
 
-      {/* ✅ PROFESSIONAL TOAST NOTIFICATION SYSTEM ✅ */}
+      {/* ✅ NEW: Professional Toast Notification System ✅ */}
       <AnimatePresence>
         {toast && (
           <motion.div 
@@ -756,6 +777,7 @@ export default function Card() {
           </motion.div>
         )}
       </AnimatePresence>
+
     </main>
   );
 }
