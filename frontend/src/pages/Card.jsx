@@ -9,10 +9,8 @@ import { API_BASE } from "../apiConfig";
  * - Rain falls BEHIND card (z-0), fades at middle.
  * - Stamps are now the CAKEROVEN LOGO when filled.
  * - 12th Stamp is UNIQUE (Golden glow, Gift icon).
- * - ✨ NEW: Compact "Rs. 2000 WORTH FREE FOOD!" animation filling the space.
  */
 
-// --- Holiday Logic ---
 function getIstDate(now = new Date()) {
   const ist = new Date(now.getTime() + 330 * 60 * 1000);
   return ist;
@@ -45,72 +43,6 @@ function getHolidayInfoForIst(dateIst) {
   return { isHoliday: false };
 }
 
-// --- New Component: Compact Fireworks Message ---
-const FireworksMessage = () => {
-  // Create an array for the spark particles
-  const sparks = Array.from({ length: 20 }); // Slightly fewer sparks for cleaner look on mobile
-
-  const sparkVariants = {
-    initial: { opacity: 0, scale: 0, x: 0, y: 0 },
-    animate: (i) => {
-      const angle = (i / sparks.length) * 360;
-      const radius = 60 + Math.random() * 40; // Tighter radius to fit space
-      const x = Math.cos((angle * Math.PI) / 180) * radius;
-      const y = Math.sin((angle * Math.PI) / 180) * radius;
-      const duration = 1.5 + Math.random();
-
-      return {
-        opacity: [0, 1, 0],
-        scale: [0, 1, 0],
-        x: x,
-        y: y,
-        transition: {
-          duration: duration,
-          repeat: Infinity,
-          repeatType: "loop",
-          ease: "easeOut",
-        },
-      };
-    },
-  };
-
-  return (
-    // Reduced padding (py-1) and margins (my-1) to fit in the empty space
-    <div className="relative flex items-center justify-center py-2 my-1 overflow-visible z-10">
-      {/* Fireworks Sparks */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        {sparks.map((_, i) => (
-          <motion.div
-            key={i}
-            custom={i}
-            variants={sparkVariants}
-            initial="initial"
-            animate="animate"
-            className="absolute w-1 h-1 bg-amber-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)]"
-            style={{
-              backgroundColor: Math.random() > 0.5 ? '#FBBF24' : '#FCD34D', 
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Main Text - Compact Layout */}
-      <motion.h2
-        initial={{ scale: 0.98 }}
-        animate={{ scale: [0.98, 1.05, 0.98] }}
-        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-        className="relative z-10 text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 text-center leading-tight drop-shadow-md"
-        style={{
-            textShadow: '0 0 10px rgba(251, 191, 36, 0.4)'
-        }}
-      >
-        ✨ Rs. 2000 WORTH <br /> FREE FOOD! ✨
-      </motion.h2>
-    </div>
-  );
-};
-
-// --- Main Card Component ---
 export default function Card() {
   const navigate = useNavigate();
 
@@ -400,8 +332,8 @@ export default function Card() {
             </div>
           </div>
 
-          {/* Holder Info - Reduced margin bottom to fit fireworks */}
-          <div className="mb-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          {/* Holder Info */}
+          <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="min-w-0">
               <p className="text-xs text-amber-100/70">Card Holder</p>
               <p className="text-base font-semibold truncate">{card?.name || "—"}</p>
@@ -421,9 +353,6 @@ export default function Card() {
               </button>
             </div>
           </div>
-
-          {/* ✨ NEW: Compact Fireworks Message Animation in the empty space ✨ */}
-          <FireworksMessage />
 
           {/* Progress Bar */}
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
