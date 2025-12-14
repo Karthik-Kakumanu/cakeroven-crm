@@ -8,9 +8,9 @@ import { API_BASE } from "../apiConfig";
  * Card.jsx
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
- * - 12th Stamp is UNIQUE.
- * - NEW: Payment Gateway UI (Razorpay Ready).
- * - FIXED: "₹2000 Food Free" Badge fits perfectly on all mobile screens.
+ * - 11 Stamps AUTOMATED via Payment (Razorpay).
+ * - 12th Stamp is MANUAL only.
+ * - FIXED: Responsive "Food Free" Badge.
  */
 
 function getIstDate(now = new Date()) {
@@ -177,16 +177,17 @@ export default function Card() {
   };
   const handleInlineLogoError = () => setLogoInlineVisible(false);
 
-  // --- Payment Handler (Razorpay) ---
+  // --- Payment Handler (Razorpay + Backend Auto Stamp) ---
   const handlePayment = async () => {
-    if (!payAmount || Number(payAmount) < 1) {
-      alert("Please enter a valid amount (minimum ₹1)");
+    // 1. Validation
+    if (!payAmount || Number(payAmount) < 1000) {
+      alert("Payment must be ₹1000 or more to earn a stamp.");
       return;
     }
 
     setIsPaying(true);
 
-    // 1. Load the SDK
+    // 2. Load the SDK
     const res = await loadRazorpayScript();
     if (!res) {
       alert("Razorpay SDK failed to load. Please check your internet connection.");
@@ -194,18 +195,49 @@ export default function Card() {
       return;
     }
 
-    // 2. Setup Options 
-    // TODO: Replace "YOUR_TEST_KEY_ID" with actual Razorpay Key ID
+    // 3. Setup Options with YOUR TEST KEY
     const options = {
-      key: "YOUR_TEST_KEY_ID", 
-      amount: Number(payAmount) * 100, 
+      key: "rzp_test_1DP5mmOlF5G5ag", // ✅ Test Key
+      amount: Number(payAmount) * 100, // Amount in paise
       currency: "INR",
       name: "CakeRoven",
-      description: "Loyalty Card Payment",
-      image: "https://your-domain.com/cakeroven-logo.png",
-      handler: function (response) {
-        alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
-        setPayAmount("");
+      description: "Loyalty Stamp Payment",
+      image: `${window.location.origin}/cakeroven-logo.png`, // Public logo
+      
+      // ✅ Success Handler calling the NEW Endpoint
+      handler: async function (response) {
+        try {
+          const verifyRes = await fetch(`${API_BASE}/api/customer/add-online-stamp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              memberCode: card?.memberCode,
+              amount: Number(payAmount),
+              paymentId: response.razorpay_payment_id
+            }),
+          });
+          
+          const data = await verifyRes.json();
+          
+          if (verifyRes.ok) {
+            if (data.stampAdded) {
+               alert("Payment Successful! 🎉 1 Stamp Added Automatically.");
+               setCard(data.card); // Update UI instantly
+            } else {
+               // This happens if they have 11 stamps and pay online
+               alert("Payment Successful! Note: You have reached 11 stamps. The 12th stamp must be added manually in-store to claim your reward.");
+               setCard(data.card); // Update info anyway
+            }
+          } else {
+             alert(data.message || "Payment succeeded but stamp update failed. Please contact Admin.");
+          }
+        } catch (err) {
+          console.error("Backend stamp error", err);
+          alert("Network error updating stamp. Please show payment ID to Admin.");
+        } finally {
+          setIsPaying(false);
+          setPayAmount("");
+        }
       },
       prefill: {
         name: card?.name || "",
@@ -217,14 +249,13 @@ export default function Card() {
     };
 
     try {
-      console.log("Initializing Razorpay with options:", options);
-      // const paymentObject = new window.Razorpay(options);
-      // paymentObject.open();
-
-      setTimeout(() => {
-        alert(`Payment gateway logic triggered for ₹${payAmount}. \n(Integration pending Razorpay verification)`);
-        setIsPaying(false);
-      }, 500);
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+      
+      paymentObject.on('payment.failed', function (response){
+          alert("Payment Failed: " + response.error.description);
+          setIsPaying(false);
+      });
 
     } catch (error) {
       console.error("Payment Error:", error);
@@ -560,7 +591,7 @@ export default function Card() {
           </div>
 
           {/* ======================================================== */}
-          {/* ✅ NEW SECTION: Online Payment (Razorpay Placeholder) ✅ */}
+          {/* ✅ PAYMENT SECTION (Razorpay + Auto Stamp) ✅ */}
           {/* ======================================================== */}
           <div className="rounded-2xl bg-gradient-to-br from-black/20 to-black/40 border border-amber-100/10 p-4 mb-4 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
@@ -627,9 +658,6 @@ export default function Card() {
             <p>
               On your 12th visit, enjoy up to ₹2000 worth of food FREE.
               If the bill exceeds ₹2000, only the balance amount is payable.
-            </p>
-            <p>
-              Only 1 bill = 1 stamp. No bill splitting allowed.
             </p>
 
             <div className="flex items-center gap-2 mt-2">

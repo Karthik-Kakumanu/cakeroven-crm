@@ -1,4 +1,3 @@
-// backend/src/controllers/adminController.js
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -34,13 +33,19 @@ exports.login = async (req, res) => {
   }
 };
 
+// ✅ UPDATED: Now fetches stamp_history so dates appear in Dashboard
 exports.getCustomers = async (req, res) => {
   try {
     const q = `
       SELECT u.id, u.member_code, u.name, u.phone, u.dob,
              COALESCE(l.current_stamps,0) as current_stamps,
              COALESCE(l.total_rewards,0) as total_rewards,
-             l.updated_at
+             l.updated_at,
+             (
+               SELECT json_agg(json_build_object('index', sh.stamp_index, 'date', sh.created_at))
+               FROM stamps_history sh
+               WHERE sh.user_id = u.id
+             ) as stamp_history
       FROM users u
       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
       ORDER BY u.id ASC
@@ -114,8 +119,7 @@ exports.addStamp = async (req, res) => {
         await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [user.id]);
       }
 
-      // record into stamps_history (use existing DB table name & columns)
-      // recordedStampIndex: if current === 0 it means the member hit the 12th before reset -> record 12
+      // record into stamps_history
       const recordedStampIndex = current === 0 ? 12 : current;
       await client.query(
         `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
@@ -159,7 +163,6 @@ exports.removeStamp = async (req, res) => {
       let current = 0;
       let rewards = 0;
       if (laRes.rows.length === 0) {
-        // nothing to remove
         return {
           card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: 0, totalRewards: 0 },
         };
@@ -171,10 +174,8 @@ exports.removeStamp = async (req, res) => {
       if (current > 0) {
         current -= 1;
       } else if (rewards > 0) {
-        // roll back a reward into stamps: remove latest reward row
         rewards -= 1;
         current = 11;
-        // delete the most recent reward row for the user
         await client.query(
           `DELETE FROM rewards WHERE id = (
              SELECT id FROM rewards WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1
@@ -182,7 +183,6 @@ exports.removeStamp = async (req, res) => {
           [user.id]
         );
       } else {
-        // nothing to remove
         return {
           card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: current, totalRewards: rewards },
         };
@@ -193,7 +193,6 @@ exports.removeStamp = async (req, res) => {
         [current, rewards, user.id]
       );
 
-      // record an undo event in stamps_history (we store the resulting stamp_index after removal)
       await client.query(
         `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
         [user.id, current]
@@ -230,15 +229,8 @@ exports.getRewardHistoryFor = async (req, res) => {
   }
 };
 
-/**
- * NEW - getInsights
- * Returns:
- *  - stamps_over_time: last 14 days (date, stamps)
- *  - rewards_per_month: last 6 months (month, rewards)
- */
 exports.getInsights = async (req, res) => {
   try {
-    // 1) stamps over time: last 14 days (include zeros)
     const stampsQ = `
       SELECT to_char(day::date, 'YYYY-MM-DD') as date,
              COALESCE(sum(cnt),0)::int as stamps
@@ -255,7 +247,6 @@ exports.getInsights = async (req, res) => {
       ORDER BY day;
     `;
 
-    // 2) rewards per month: last 6 months
     const rewardsQ = `
       SELECT to_char(month, 'Mon YYYY') AS month,
              COALESCE(counts,0)::int AS rewards
@@ -273,7 +264,6 @@ exports.getInsights = async (req, res) => {
     `;
 
     const [stampsRes, rewardsRes] = await Promise.all([db.query(stampsQ), db.query(rewardsQ)]);
-
     const stampsOverTime = stampsRes.rows.map((r) => ({ date: r.date, stamps: Number(r.stamps) }));
     const rewardsPerMonth = rewardsRes.rows.map((r) => ({ month: r.month, rewards: Number(r.rewards) }));
 

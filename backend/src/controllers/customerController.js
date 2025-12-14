@@ -1,13 +1,6 @@
-// backend/src/controllers/customerController.js
 const db = require("../config/db");
 const generateMemberCode = require("../utils/generateMemberCode");
 
-/**
- * Register a new customer
- * POST /api/customer/register
- * body: { name, phone, dob }
- */
-// registerCustomer - robust atomic implementation
 exports.registerCustomer = async (req, res) => {
   const { name, phone, dob } = req.body;
   if (!name || !phone) {
@@ -17,27 +10,22 @@ exports.registerCustomer = async (req, res) => {
 
   try {
     const result = await db.withClient(async (client) => {
-      // 1) check if phone already exists
       const ex = await client.query("SELECT id, member_code FROM users WHERE phone = $1 LIMIT 1", [trimmedPhone]);
       if (ex.rows.length > 0) {
         return { status: 409, body: { message: "This phone number is already registered. Use Existing User." } };
       }
 
-      // 2) ensure sequence exists and position it safely
       await client.query("CREATE SEQUENCE IF NOT EXISTS member_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1");
-      // make seq at least max(existing)
       const maxRes = await client.query("SELECT COALESCE(MAX(CAST(REGEXP_REPLACE(member_code, '\\D','','g') AS INTEGER)), 0) AS maxnum FROM users");
       const maxNum = maxRes.rows && maxRes.rows[0] ? Number(maxRes.rows[0].maxnum) : 0;
       if (maxNum > 0) {
         await client.query("SELECT setval('member_seq', $1, true)", [maxNum]);
       }
 
-      // 3) get next sequence value (atomic)
       const seqR = await client.query("SELECT nextval('member_seq') AS v");
       const seqVal = seqR.rows && seqR.rows[0] ? Number(seqR.rows[0].v) : null;
       const memberCode = `CR${String(seqVal || (maxNum + 1)).padStart(4, '0')}`;
 
-      // 4) insert user and loyalty row in same transaction
       const uIns = await client.query(
         `INSERT INTO users (member_code, name, phone, dob, created_at)
          VALUES ($1, $2, $3, $4, NOW())
@@ -67,19 +55,15 @@ exports.registerCustomer = async (req, res) => {
       };
     });
 
-    // Return result from withClient
     if (result && result.status && result.body) {
       return res.status(result.status).json(result.body);
     }
-    // fallback
     return res.status(500).json({ message: "Server error registering user — unknown result" });
   } catch (err) {
     console.error("Register customer error:", err);
-    // return helpful error to client for now to help debug
     return res.status(500).json({ message: "Server error", error: err && err.message ? err.message : err });
   }
 };
-
 
 exports.loginByPhone = async (req, res) => {
   try {
@@ -151,5 +135,73 @@ exports.getCard = async (req, res) => {
   } catch (error) {
     console.error("Get card error:", error);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ✅ NEW: Handles online payments (Auto-stamp for <11, Manual for 12)
+exports.addOnlineStamp = async (req, res) => {
+  const { memberCode, amount, paymentId } = req.body;
+
+  // Basic Validation
+  if (!memberCode || !amount || amount < 1000) {
+    return res.status(400).json({ message: "Invalid request. Amount must be >= 1000." });
+  }
+
+  try {
+    const result = await db.withClient(async (client) => {
+      // 1. Lock User
+      const uRes = await client.query("SELECT id, member_code, name, phone FROM users WHERE member_code = $1 FOR UPDATE", [memberCode]);
+      if (uRes.rows.length === 0) throw { status: 404, message: "User not found" };
+      const user = uRes.rows[0];
+
+      // 2. Lock Loyalty
+      const lRes = await client.query("SELECT current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE", [user.id]);
+      let currentStamps = 0;
+      let totalRewards = 0;
+      if (lRes.rows.length > 0) {
+        currentStamps = Number(lRes.rows[0].current_stamps || 0);
+        totalRewards = Number(lRes.rows[0].total_rewards || 0);
+      } else {
+         // Should usually exist if registered, but safeguard:
+         await client.query("INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards) VALUES ($1,0,0)", [user.id]);
+      }
+
+      // 3. Logic: Only auto-add if stamps < 11.
+      // If stamps == 11, the 12th must be manual.
+      if (currentStamps >= 11) {
+        return {
+          status: 200,
+          body: {
+            message: "Payment recorded. Final stamp (12th) must be added manually in-store to claim reward.",
+            card: { memberCode, name: user.name, phone: user.phone, currentStamps, totalRewards },
+            stampAdded: false
+          }
+        };
+      }
+
+      // 4. Add Stamp
+      const newStamps = currentStamps + 1;
+      await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
+      
+      // 5. Record History (So it shows in Admin Dashboard with Date)
+      await client.query("INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())", [user.id, newStamps]);
+
+      // 6. Optional: Log the payment itself if you have a payments table (skipping for now based on your files)
+
+      return {
+        status: 200,
+        body: {
+          message: "Payment successful! Stamp added automatically.",
+          card: { memberCode, name: user.name, phone: user.phone, currentStamps: newStamps, totalRewards },
+          stampAdded: true
+        }
+      };
+    });
+
+    return res.status(result.status).json(result.body);
+
+  } catch (err) {
+    console.error("addOnlineStamp error:", err);
+    return res.status(500).json({ message: "Server error processing payment stamp." });
   }
 };
