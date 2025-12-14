@@ -376,7 +376,7 @@ export default function Card() {
                 <div className="absolute inset-0 bg-[#fbbf24] blur opacity-20 rounded-lg group-hover:opacity-30 transition"></div>
                 <div className="relative px-3 py-1.5 rounded-xl border border-[#fbbf24]/40 bg-[#fbbf24]/10 shadow-[0_0_15px_rgba(251,191,36,0.15)] backdrop-blur-sm">
                   <p className="text-[10px] uppercase tracking-wider text-[#fbbf24]/80 font-bold mb-0.5 text-right leading-none">
-                    Unlocks at 12
+                    Unlocks after 11 stamps
                   </p>
                   <p className="text-xs sm:text-sm font-extrabold text-[#fbbf24] whitespace-nowrap leading-none shadow-black drop-shadow-md">
                     ₹2000 Food FREE ✨
@@ -490,16 +490,16 @@ export default function Card() {
           {/* Info & actions */}
           <div className="text-xs text-amber-100/75 space-y-2">
             <p>
-              Show this card at the counter after each visit. Every bill of{" "}
+              Cash: Show at counter, Online: Pay through this CRM website of
               <span className="font-semibold">₹1000 or more</span> earns{" "}
               <span className="font-semibold">1 stamp</span>.
             </p>
             <p>
-              After collecting 11 stamps, you’re eligible for a complimentary
-              CakeRoven treat With Rs. 2000 Worth Free Food and 12th stamp. 
+              On your 12th visit, enjoy up to ₹2000 worth of food FREE.
+              If the bill exceeds ₹2000, only the balance amount is payable, Unused free value does not carry forward.
             </p>
             <p>
-              And on 12th stamp time no need make any type of bill.
+              Only 1 bill = 1 stamp. No bill splitting allowed.
             </p>
 
             <div className="flex items-center gap-2 mt-2">
