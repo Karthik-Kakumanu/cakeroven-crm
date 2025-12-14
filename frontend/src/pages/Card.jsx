@@ -289,6 +289,36 @@ export default function Card() {
     );
   }
 
+   {/* ✅ ADDED: CAKEROVEN LOGO RAIN */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <motion.img
+            key={i}
+            src="/cakeroven-logo.png"
+            alt=""
+            className="absolute w-16 h-16"
+            initial={{
+              y: -150,
+              x: `${Math.random() * 100}vw`,
+              opacity: 0,
+              rotate: -20,
+            }}
+            animate={{
+              y: "110vh",
+              opacity: [0, 1, 1, 0],
+              rotate: [-20, 10, -10, 20],
+            }}
+            transition={{
+              duration: 8,
+              delay: i * 0.6,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+            style={{ filter: "brightness(0.7) contrast(1.5)" }}
+          />
+        ))}
+      </div>
+
   // --- Main card UI (normal days) ---
   return (
     <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
