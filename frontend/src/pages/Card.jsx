@@ -540,7 +540,7 @@ export default function Card() {
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">
-                {stamps}/12
+                {stamps}/11
               </span>
               <p className="text-xs text-amber-100/80">
                 {isRewardReady
@@ -559,7 +559,7 @@ export default function Card() {
             <div className="flex items-start justify-between mb-2 gap-2">
               <div className="text-sm text-amber-100/80">
                 <p className="text-xs">
-                  Collect <span className="font-semibold">12 stamps</span> to
+                  Collect <span className="font-semibold">11 stamps</span> to
                   unlock a special CakeRoven treat 🎁
                 </p>
                 {rewards > 0 && (
