@@ -710,11 +710,7 @@ export default function Card() {
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-100/20 text-xs hover:bg-amber-100/6 transition"
               >
                 Not you? Switch user
-              </button>
-
-            <p>
-              * Conditions apply on 25th Dec & 31st Dec - 1st Jan.
-            </p>  
+              </button> 
 
               {isRewardReady && (
                 <motion.button
@@ -728,6 +724,9 @@ export default function Card() {
                 </motion.button>
               )}
             </div>
+            <p>
+              * Conditions apply on 25th Dec & 31st Dec - 1st Jan.
+            </p> 
           </div>
         </div>
 
