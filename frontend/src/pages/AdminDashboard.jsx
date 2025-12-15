@@ -24,7 +24,7 @@ import { API_BASE } from "../apiConfig";
  * - Auto-poll for customers (20s)
  * - Celebration toast that auto-dismisses in 2s
  * - Insights page with two charts (stamps over time, rewards per month)
- * - Copy-paste ready. Ensure `framer-motion` and `recharts` are installed.
+ * - Automatic sound notification for stamp additions
  */
 
 const POLL_INTERVAL = 20_000;
@@ -49,8 +49,11 @@ export default function AdminDashboard() {
 
   const pollRef = useRef(null);
   const rewardAudioRef = useRef(null);
-  const stampAudioRef = useRef(null); // ✅ NEW: Ref for normal stamp sound
+  const stampAudioRef = useRef(null); // Ref for normal stamp sound
   const sessionHistoryRef = useRef({});
+  
+  // Ref to store previous customers state for comparison
+  const prevCustomersRef = useRef({});
 
   // Derived stats
   const stats = useMemo(() => {
@@ -77,7 +80,7 @@ export default function AdminDashboard() {
     return { totalUsers, totalStamps, totalRewards, birthdaysToday };
   }, [customers]);
 
-  // ✅ UPDATED: Date formatter strictly for IST (Indian Standard Time)
+  // Date formatter strictly for IST (Indian Standard Time)
   const fmtDate = useCallback((iso) => {
     if (!iso) return null;
     const dt = new Date(iso);
@@ -89,6 +92,41 @@ export default function AdminDashboard() {
       year: "numeric"
     });
   }, []);
+
+  // Effect to detect stamp increases and play sound automatically
+  useEffect(() => {
+    if (customers.length > 0) {
+      let shouldPlaySound = false;
+      const newPrevCustomers = { ...prevCustomersRef.current };
+
+      customers.forEach(customer => {
+        const prevStamps = prevCustomersRef.current[customer.member_code]?.current_stamps;
+        const currentStamps = customer.current_stamps;
+
+        // If previous data exists and stamps have increased
+        if (prevStamps !== undefined && currentStamps > prevStamps) {
+          shouldPlaySound = true;
+        }
+        
+        // Update the ref with current data
+        newPrevCustomers[customer.member_code] = { current_stamps: currentStamps };
+      });
+
+      prevCustomersRef.current = newPrevCustomers;
+
+      if (shouldPlaySound) {
+        try {
+          if (stampAudioRef.current) {
+            stampAudioRef.current.currentTime = 0;
+            stampAudioRef.current.play().catch(e => console.error("Auto-play blocked:", e));
+          }
+        } catch (e) {
+          console.error("Audio play error", e);
+        }
+      }
+    }
+  }, [customers]);
+
 
   // Fetch customers
   const fetchCustomers = useCallback(
@@ -265,7 +303,7 @@ export default function AdminDashboard() {
           sess.stamp_history[newIndex] = nowIso;
       }
 
-      // ✅ PLAY SOUND FOR STAMP ADDITION
+      // PLAY SOUND FOR MANUAL STAMP ADDITION (Immediate feedback)
       try {
         if (stampAudioRef.current) {
           stampAudioRef.current.currentTime = 0;
@@ -519,7 +557,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#fbf3df] to-[#f2e6c7] text-[#3b1512]">
       <audio ref={rewardAudioRef} src="/reward-chime.mp3" preload="auto" />
-      {/* ✅ NEW: Audio element for normal stamp sound */}
+      {/* ✅ Audio element for normal stamp sound */}
       <audio ref={stampAudioRef} src="/stamp.mp3" preload="auto" />
 
       {/* Header */}
