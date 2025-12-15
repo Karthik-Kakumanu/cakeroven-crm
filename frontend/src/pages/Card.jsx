@@ -712,6 +712,10 @@ export default function Card() {
                 Not you? Switch user
               </button>
 
+            <p>
+              * Conditions apply on 25th Dec & 31st Dec - 1st Jan.
+            </p>  
+
               {isRewardReady && (
                 <motion.button
                   onClick={() => {
