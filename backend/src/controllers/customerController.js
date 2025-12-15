@@ -10,20 +10,17 @@ exports.registerCustomer = async (req, res) => {
 
   try {
     const result = await db.withClient(async (client) => {
-      // ✅ STEP 1: CHECK DUPLICATE FIRST
-      // We check this BEFORE asking for a new Member ID. 
-      // This prevents "burning" a number if the user already exists.
+      // 1. Check if phone exists (Ignore spaces)
       const ex = await client.query("SELECT id FROM users WHERE TRIM(phone) = $1 LIMIT 1", [trimmedPhone]);
-      
       if (ex.rows.length > 0) {
-        // Stop here! Do NOT touch the sequence.
-        return { status: 409, body: { message: "This mobile number is already registered. Please Login." } };
+        return { status: 409, body: { message: "Phone number already exists. Please Login." } };
       }
 
-      // ✅ STEP 2: Generate CR Code (Only happens if phone is unique)
+      // 2. Generate CR Code safely
+      // Ensure sequence exists
       await client.query("CREATE SEQUENCE IF NOT EXISTS member_seq START WITH 1 INCREMENT BY 1");
       
-      // Get the next strictly sequential number
+      // Get next value
       const seqRes = await client.query("SELECT nextval('member_seq') as val");
       const nextVal = seqRes.rows[0].val;
       const memberCode = `CR${String(nextVal).padStart(4, '0')}`;
@@ -68,7 +65,7 @@ exports.registerCustomer = async (req, res) => {
   }
 };
 
-// --- Login By Phone (Safe Read-Only) ---
+// --- Login By Phone (FIXED) ---
 exports.loginByPhone = async (req, res) => {
   try {
     const { phone } = req.body;
@@ -76,7 +73,7 @@ exports.loginByPhone = async (req, res) => {
 
     const trimmedPhone = phone.trim();
 
-    // ✅ This is a READ-ONLY search. It does NOT generate IDs.
+    // ✅ FIX: Added TRIM() to database field to ignore extra spaces
     const userRes = await db.query(
       `SELECT u.id, u.member_code, u.name, u.phone, 
               COALESCE(l.current_stamps, 0) as current_stamps, 
@@ -88,7 +85,7 @@ exports.loginByPhone = async (req, res) => {
     );
 
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ message: "No customer found with this phone number. Please Register." });
+      return res.status(404).json({ message: "No customer found with this phone number" });
     }
 
     const row = userRes.rows[0];
@@ -148,7 +145,7 @@ exports.getCard = async (req, res) => {
   }
 };
 
-// --- Add Online Stamp (Safe) ---
+// --- Add Online Stamp (FIXED) ---
 exports.addOnlineStamp = async (req, res) => {
   const { memberCode, amount } = req.body;
 
@@ -174,7 +171,7 @@ exports.addOnlineStamp = async (req, res) => {
         await client.query("INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards) VALUES ($1,0,0)", [user.id]);
       }
 
-      // 1. Amount Check
+      // Logic: Amount < 1000 -> No Stamp
       if (amount < 1000) {
         return {
           status: 200,
@@ -187,7 +184,7 @@ exports.addOnlineStamp = async (req, res) => {
         };
       }
 
-      // 2. Limit Check
+      // Logic: Stamps >= 11 -> No Stamp (Manual only)
       if (currentStamps >= 11) {
         return {
           status: 200,
@@ -200,15 +197,16 @@ exports.addOnlineStamp = async (req, res) => {
         };
       }
 
-      // 3. Add Stamp
+      // Logic: Add Stamp
       const newStamps = currentStamps + 1;
       
+      // Update Account
       await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
       
-      // Clear duplicate history for this index if any
+      // ✅ FIX: Delete existing history for this index to prevent duplicate/old dates
       await client.query("DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2", [user.id, newStamps]);
       
-      // Insert fresh history
+      // Insert New History (Current Time)
       await client.query("INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())", [user.id, newStamps]);
 
       return {
