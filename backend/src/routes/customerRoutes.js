@@ -1,17 +1,17 @@
 const express = require("express");
 const router = express.Router();
-const customer = require("../controllers/customerController");
+const customerController = require("../controllers/customerController");
 
-// New registration
-router.post("/register", customer.registerCustomer);
+// Register a new user
+router.post("/register", customerController.registerCustomer);
 
-// Existing user login by phone
-router.post("/login-by-phone", customer.loginByPhone);
+// ✅ FIX: Ensure this route exists for Login
+router.post("/login-by-phone", customerController.loginByPhone);
 
-// Secure card fetch – needs BOTH member code + phone
-router.get("/card/:memberCode", customer.getCard);
+// Get specific card details
+router.get("/card/:memberCode", customerController.getCard);
 
-// ✅ NEW: Online payment stamp endpoint
-router.post("/add-online-stamp", customer.addOnlineStamp);
+// Add stamp via online payment
+router.post("/add-online-stamp", customerController.addOnlineStamp);
 
 module.exports = router;
