@@ -429,8 +429,8 @@ export default function Card() {
               ease: "linear",
             }}
             style={{ 
-               left: `${Math.random() * 100}%`,
-               filter: "brightness(0.9) opacity(0.5)" 
+              left: `${Math.random() * 100}%`,
+              filter: "brightness(0.9) opacity(0.5)" 
             }}
           />
         ))}
@@ -781,18 +781,18 @@ export default function Card() {
               ${toast.type === 'success' ? 'bg-[#501914]/95 text-amber-100 border-amber-500/50' : 
                 toast.type === 'error' ? 'bg-red-900/90 text-white border-red-500/50' : 
                 'bg-gray-800/95 text-white border-white/10'}`}>
-               
-               <span className="text-2xl flex-shrink-0">
-                 {toast.type === 'success' ? '🎉' : toast.type === 'error' ? '⚠️' : 'ℹ️'}
-               </span>
-               
-               <div className="flex-1">
-                 <p className="text-sm font-medium leading-snug">{toast.message}</p>
-               </div>
-               
-               <button onClick={()=>setToast(null)} className="opacity-50 hover:opacity-100 p-1">
-                 ✕
-               </button>
+              
+              <span className="text-2xl flex-shrink-0">
+                {toast.type === 'success' ? '🎉' : toast.type === 'error' ? '⚠️' : 'ℹ️'}
+              </span>
+              
+              <div className="flex-1">
+                <p className="text-sm font-medium leading-snug">{toast.message}</p>
+              </div>
+              
+              <button onClick={()=>setToast(null)} className="opacity-50 hover:opacity-100 p-1">
+                ✕
+              </button>
             </div>
           </motion.div>
         )}

@@ -19,11 +19,11 @@ import { API_BASE } from "../apiConfig";
  * AdminDashboard.jsx
  * - Modernized, responsive dashboard using Tailwind CSS + Framer Motion
  * - Includes:
- *    - Customers table with compact 12-stamp row and per-stamp date tooltip
- *    - Add/Remove stamp actions (calls backend endpoints)
- *    - Auto-poll for customers (20s)
- *    - Celebration toast that auto-dismisses in 2s
- *    - Insights page with two charts (stamps over time, rewards per month)
+ * - Customers table with compact 12-stamp row and per-stamp date tooltip
+ * - Add/Remove stamp actions (calls backend endpoints)
+ * - Auto-poll for customers (20s)
+ * - Celebration toast that auto-dismisses in 2s
+ * - Insights page with two charts (stamps over time, rewards per month)
  * - Copy-paste ready. Ensure `framer-motion` and `recharts` are installed.
  */
 
@@ -59,7 +59,6 @@ export default function AdminDashboard() {
     const birthdaysToday = [];
 
     const now = new Date();
-    const istDate = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
     const d = now.getDate();
     const m = now.getMonth();
 
@@ -77,13 +76,12 @@ export default function AdminDashboard() {
     return { totalUsers, totalStamps, totalRewards, birthdaysToday };
   }, [customers]);
 
-  // Simple date formatter
+  // ✅ UPDATED: Date formatter strictly for IST (Indian Standard Time)
   const fmtDate = useCallback((iso) => {
     if (!iso) return null;
     const dt = new Date(iso);
     if (Number.isNaN(dt.getTime())) return null;
-    return dt.toLocaleDateString("en-GB",
-    {
+    return dt.toLocaleDateString("en-GB", {
       timeZone: "Asia/Kolkata", 
       day: "2-digit", 
       month: "2-digit", 
@@ -246,6 +244,8 @@ export default function AdminDashboard() {
                 ...c,
                 current_stamps: Number(data.card?.currentStamps ?? data.card?.current_stamps ?? data.current_stamps ?? c.current_stamps ?? 0),
                 total_rewards: Number(data.card?.totalRewards ?? data.card?.total_rewards ?? data.total_rewards ?? c.total_rewards ?? 0),
+                // If awarded, backend deleted history, so we should clear local stamp_history
+                stamp_history: data.awarded ? [] : c.stamp_history
               }
             : c
         )
@@ -255,8 +255,14 @@ export default function AdminDashboard() {
       const nowIso = new Date().toISOString();
       const sess = sessionHistoryRef.current[memberCode] || { stamp_history: {}, reward_history: [] };
       const newIndex = Number(data.card?.currentStamps ?? data.card?.current_stamps ?? 0) || 1;
-      sess.stamp_history = sess.stamp_history || {};
-      sess.stamp_history[newIndex] = nowIso;
+      
+      if (data.awarded) {
+          // If awarded, clear history in session ref too
+          sess.stamp_history = {};
+      } else {
+          sess.stamp_history = sess.stamp_history || {};
+          sess.stamp_history[newIndex] = nowIso;
+      }
 
       // if reward awarded, show celebration and push reward
       if (data.awarded || (data.card && Number(data.card.currentStamps ?? data.card.current_stamps) === 0 && Number(data.card.totalRewards ?? data.card.total_rewards) > 0)) {
@@ -460,7 +466,10 @@ export default function AdminDashboard() {
     const boxes = [];
     for (let i = 1; i <= 12; i++) {
       const filled = i <= current;
+      // If cycle was reset, backend deleted history, so date should be null for i > current
+      // (Even for i <= current, if we deleted everything, it might be null until we re-stamp, which is correct behavior for a fresh start)
       const dateStr = getStampDateFromCustomer(customers.find((c) => c.member_code === memberCode), i);
+      
       boxes.push(
         <div key={i} className="flex flex-col items-center">
           <button
@@ -475,7 +484,9 @@ export default function AdminDashboard() {
           >
             {i}
           </button>
-          <div className="text-[10px] text-[#6b3a35]/60 h-4 mt-1">{dateStr ? fmtDate(dateStr) : ""}</div>
+          <div className="text-[10px] text-[#6b3a35]/60 h-4 mt-1 whitespace-nowrap">
+             {dateStr ? fmtDate(dateStr) : ""}
+          </div>
         </div>
       );
     }

@@ -101,11 +101,16 @@ exports.addStamp = async (req, res) => {
       // add one stamp
       current += 1;
       let awarded = false;
+      
       if (current >= 12) {
         // award
         current = 0;
         rewards += 1;
         awarded = true;
+
+        // ✅ REQUIRED ADDITION: Delete previous stamp history dates so the new card starts fresh
+        // This ensures dates under the stamps are cleared for the new cycle
+        await client.query(`DELETE FROM stamps_history WHERE user_id = $1`, [user.id]);
       }
 
       // update loyalty_accounts
@@ -120,12 +125,15 @@ exports.addStamp = async (req, res) => {
       }
 
       // record into stamps_history
-      // If we reset to 0, we still record '12' as the index for history purposes
-      const recordedStampIndex = current === 0 ? 12 : current;
-      await client.query(
-        `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
-        [user.id, recordedStampIndex]
-      );
+      // If we reset to 0, we can choose to record the '12th' stamp momentarily or just leave it cleared.
+      // Since we just deleted history, if we insert now, it will be the only record. 
+      // Based on logic, if current is 0 (reset), we usually don't need a stamp index shown on the new empty card.
+      if (current > 0) {
+         await client.query(
+          `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
+          [user.id, current]
+        );
+      }
 
       return {
         card: {
@@ -173,6 +181,8 @@ exports.removeStamp = async (req, res) => {
       }
 
       if (current > 0) {
+        // remove specific stamp history for this index
+        await client.query(`DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2`, [user.id, current]);
         current -= 1;
       } else if (rewards > 0) {
         // undo a reward
@@ -184,6 +194,8 @@ exports.removeStamp = async (req, res) => {
            )`,
           [user.id]
         );
+        // Note: We cannot easily "restore" old dates if we deleted them on reset, 
+        // so the card will show 11 stamps but might not show the old dates.
       } else {
         return {
           card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: current, totalRewards: rewards },
@@ -193,11 +205,6 @@ exports.removeStamp = async (req, res) => {
       await client.query(
         `UPDATE loyalty_accounts SET current_stamps = $1, total_rewards = $2, updated_at = NOW() WHERE user_id = $3`,
         [current, rewards, user.id]
-      );
-
-      await client.query(
-        `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
-        [user.id, current]
       );
 
       return {
