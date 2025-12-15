@@ -33,7 +33,6 @@ exports.login = async (req, res) => {
   }
 };
 
-// ✅ UPDATED: Fetches stamp_history so dates appear in Dashboard
 exports.getCustomers = async (req, res) => {
   try {
     const q = `
@@ -108,8 +107,8 @@ exports.addStamp = async (req, res) => {
         rewards += 1;
         awarded = true;
 
-        // ✅ REQUIRED ADDITION: Delete previous stamp history dates so the new card starts fresh
-        // This ensures dates under the stamps are cleared for the new cycle
+        // ✅ FIX: DELETE OLD DATES ON RESET
+        // This ensures the new cycle starts fresh with no dates under the empty circles
         await client.query(`DELETE FROM stamps_history WHERE user_id = $1`, [user.id]);
       }
 
@@ -124,10 +123,8 @@ exports.addStamp = async (req, res) => {
         await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [user.id]);
       }
 
-      // record into stamps_history
-      // If we reset to 0, we can choose to record the '12th' stamp momentarily or just leave it cleared.
-      // Since we just deleted history, if we insert now, it will be the only record. 
-      // Based on logic, if current is 0 (reset), we usually don't need a stamp index shown on the new empty card.
+      // record into stamps_history ONLY if we haven't just reset
+      // This prevents a "12" stamp from appearing on the fresh (empty) card
       if (current > 0) {
          await client.query(
           `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
@@ -194,8 +191,6 @@ exports.removeStamp = async (req, res) => {
            )`,
           [user.id]
         );
-        // Note: We cannot easily "restore" old dates if we deleted them on reset, 
-        // so the card will show 11 stamps but might not show the old dates.
       } else {
         return {
           card: { memberCode: user.member_code, name: user.name, phone: user.phone, currentStamps: current, totalRewards: rewards },
