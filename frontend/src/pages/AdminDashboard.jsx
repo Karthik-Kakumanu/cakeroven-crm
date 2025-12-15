@@ -49,6 +49,7 @@ export default function AdminDashboard() {
 
   const pollRef = useRef(null);
   const rewardAudioRef = useRef(null);
+  const stampAudioRef = useRef(null); // ✅ NEW: Ref for normal stamp sound
   const sessionHistoryRef = useRef({});
 
   // Derived stats
@@ -264,6 +265,14 @@ export default function AdminDashboard() {
           sess.stamp_history[newIndex] = nowIso;
       }
 
+      // ✅ PLAY SOUND FOR STAMP ADDITION
+      try {
+        if (stampAudioRef.current) {
+          stampAudioRef.current.currentTime = 0;
+          stampAudioRef.current.play().catch(() => {});
+        }
+      } catch (e) { console.error("Audio play error", e); }
+
       // if reward awarded, show celebration and push reward
       if (data.awarded || (data.card && Number(data.card.currentStamps ?? data.card.current_stamps) === 0 && Number(data.card.totalRewards ?? data.card.total_rewards) > 0)) {
         sess.reward_history = sess.reward_history || [];
@@ -282,6 +291,8 @@ export default function AdminDashboard() {
       console.error("addStamp error:", err);
       alert("Server error while adding stamp");
     } finally {
+      // Force refresh to ensure latest dates from DB are loaded
+      fetchCustomers({ silence: true });
       setAddingFor(null);
     }
   };
@@ -327,6 +338,8 @@ export default function AdminDashboard() {
       console.error("removeStamp error:", err);
       alert("Server error while removing stamp");
     } finally {
+      // Force refresh
+      fetchCustomers({ silence: true });
       setRemovingFor(null);
     }
   };
@@ -506,6 +519,8 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#fbf3df] to-[#f2e6c7] text-[#3b1512]">
       <audio ref={rewardAudioRef} src="/reward-chime.mp3" preload="auto" />
+      {/* ✅ NEW: Audio element for normal stamp sound */}
+      <audio ref={stampAudioRef} src="/stamp.mp3" preload="auto" />
 
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-sm border-b border-[#f0dcb4]">
