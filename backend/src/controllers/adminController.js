@@ -33,6 +33,8 @@ exports.login = async (req, res) => {
   }
 };
 
+// ✅ UPDATED: FORCEFULLY GET ONLY THE LATEST DATE FOR EACH STAMP
+// This query groups by stamp_index and picks MAX(created_at), ignoring any old duplicates.
 exports.getCustomers = async (req, res) => {
   try {
     const q = `
@@ -41,9 +43,13 @@ exports.getCustomers = async (req, res) => {
              COALESCE(l.total_rewards,0) as total_rewards,
              l.updated_at,
              (
-               SELECT json_agg(json_build_object('index', sh.stamp_index, 'date', sh.created_at))
-               FROM stamps_history sh
-               WHERE sh.user_id = u.id
+               SELECT json_agg(json_build_object('index', x.stamp_index, 'date', x.max_date))
+               FROM (
+                 SELECT stamp_index, MAX(created_at) as max_date
+                 FROM stamps_history
+                 WHERE user_id = u.id
+                 GROUP BY stamp_index
+               ) x
              ) as stamp_history
       FROM users u
       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
@@ -107,8 +113,7 @@ exports.addStamp = async (req, res) => {
         rewards += 1;
         awarded = true;
 
-        // ✅ FIX: DELETE OLD DATES ON RESET
-        // This ensures the new cycle starts fresh with no dates under the empty circles
+        // ✅ RESET: Delete ALL stamp history for this user so the new card is clean
         await client.query(`DELETE FROM stamps_history WHERE user_id = $1`, [user.id]);
       }
 
@@ -123,9 +128,16 @@ exports.addStamp = async (req, res) => {
         await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [user.id]);
       }
 
-      // record into stamps_history ONLY if we haven't just reset
-      // This prevents a "12" stamp from appearing on the fresh (empty) card
+      // Record into stamps_history
       if (current > 0) {
+         // ✅ CLEANUP: Delete ANY old history for this specific stamp index first.
+         // This ensures that when we insert the new date, it is the ONLY record for this slot.
+         await client.query(
+          `DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2`,
+          [user.id, current]
+         );
+
+         // Insert the new stamp
          await client.query(
           `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
           [user.id, current]
@@ -178,7 +190,7 @@ exports.removeStamp = async (req, res) => {
       }
 
       if (current > 0) {
-        // remove specific stamp history for this index
+        // remove ALL records for this specific stamp index to avoid duplicates
         await client.query(`DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2`, [user.id, current]);
         current -= 1;
       } else if (rewards > 0) {
