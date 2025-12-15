@@ -700,6 +700,9 @@ export default function Card() {
               On your 12th visit, enjoy up to ₹2000 worth of food FREE.
               If the bill exceeds ₹2000, only the balance amount is payable.
             </p>
+            <p>
+              Only 1 bill = 1 stamp. No bill splitting allowed.
+            </p>
 
             <div className="flex items-center gap-2 mt-2">
               <button
