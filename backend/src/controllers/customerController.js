@@ -10,21 +10,23 @@ exports.registerCustomer = async (req, res) => {
 
   try {
     const result = await db.withClient(async (client) => {
-      // 1. Check existing
-      const ex = await client.query("SELECT id, member_code FROM users WHERE phone = $1 LIMIT 1", [trimmedPhone]);
+      // ✅ STEP 1: CHECK DUPLICATE FIRST
+      // We check this BEFORE asking for a new Member ID. 
+      // This prevents "burning" a number if the user already exists.
+      const ex = await client.query("SELECT id FROM users WHERE TRIM(phone) = $1 LIMIT 1", [trimmedPhone]);
+      
       if (ex.rows.length > 0) {
-        return { status: 409, body: { message: "This phone number is already registered. Please Login." } };
+        // Stop here! Do NOT touch the sequence.
+        return { status: 409, body: { message: "This mobile number is already registered. Please Login." } };
       }
 
-      // 2. Generate Code logic
+      // ✅ STEP 2: Generate CR Code (Only happens if phone is unique)
       await client.query("CREATE SEQUENCE IF NOT EXISTS member_seq START WITH 1 INCREMENT BY 1");
       
-      // Calculate next ID safely
-      const maxRes = await client.query("SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM users");
-      const nextId = maxRes.rows[0].next_id;
-      
-      // Generate CR code based on sequence or ID
-      const memberCode = `CR${String(nextId).padStart(4, '0')}`;
+      // Get the next strictly sequential number
+      const seqRes = await client.query("SELECT nextval('member_seq') as val");
+      const nextVal = seqRes.rows[0].val;
+      const memberCode = `CR${String(nextVal).padStart(4, '0')}`;
 
       // 3. Insert User
       const uIns = await client.query(
@@ -66,7 +68,7 @@ exports.registerCustomer = async (req, res) => {
   }
 };
 
-// --- Login By Phone ---
+// --- Login By Phone (Safe Read-Only) ---
 exports.loginByPhone = async (req, res) => {
   try {
     const { phone } = req.body;
@@ -74,19 +76,19 @@ exports.loginByPhone = async (req, res) => {
 
     const trimmedPhone = phone.trim();
 
-    // ✅ FIX: Use LEFT JOIN so we find the user even if loyalty_account is missing (rare bug fix)
+    // ✅ This is a READ-ONLY search. It does NOT generate IDs.
     const userRes = await db.query(
       `SELECT u.id, u.member_code, u.name, u.phone, 
               COALESCE(l.current_stamps, 0) as current_stamps, 
               COALESCE(l.total_rewards, 0) as total_rewards
        FROM users u
        LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-       WHERE u.phone = $1`,
+       WHERE TRIM(u.phone) = $1`,
       [trimmedPhone]
     );
 
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ message: "No customer found with this phone number" });
+      return res.status(404).json({ message: "No customer found with this phone number. Please Register." });
     }
 
     const row = userRes.rows[0];
@@ -121,7 +123,7 @@ exports.getCard = async (req, res) => {
               COALESCE(l.total_rewards, 0) as total_rewards
        FROM users u
        LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-       WHERE u.member_code = $1 AND u.phone = $2`,
+       WHERE u.member_code = $1 AND TRIM(u.phone) = $2`,
       [memberCode, phone]
     );
 
@@ -146,7 +148,7 @@ exports.getCard = async (req, res) => {
   }
 };
 
-// --- Add Online Stamp ---
+// --- Add Online Stamp (Safe) ---
 exports.addOnlineStamp = async (req, res) => {
   const { memberCode, amount } = req.body;
 
@@ -172,7 +174,7 @@ exports.addOnlineStamp = async (req, res) => {
         await client.query("INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards) VALUES ($1,0,0)", [user.id]);
       }
 
-      // Logic: Amount < 1000 -> No Stamp
+      // 1. Amount Check
       if (amount < 1000) {
         return {
           status: 200,
@@ -185,7 +187,7 @@ exports.addOnlineStamp = async (req, res) => {
         };
       }
 
-      // Logic: Stamps >= 11 -> No Stamp (Manual only)
+      // 2. Limit Check
       if (currentStamps >= 11) {
         return {
           status: 200,
@@ -198,16 +200,15 @@ exports.addOnlineStamp = async (req, res) => {
         };
       }
 
-      // Logic: Add Stamp
+      // 3. Add Stamp
       const newStamps = currentStamps + 1;
       
-      // Update Account
       await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
       
-      // ✅ FIX: Delete existing history for this index to prevent duplicate dates
+      // Clear duplicate history for this index if any
       await client.query("DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2", [user.id, newStamps]);
       
-      // Insert New History
+      // Insert fresh history
       await client.query("INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())", [user.id, newStamps]);
 
       return {
