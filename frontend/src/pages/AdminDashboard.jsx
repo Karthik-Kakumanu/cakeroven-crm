@@ -466,9 +466,9 @@ export default function AdminDashboard() {
     const boxes = [];
     for (let i = 1; i <= 12; i++) {
       const filled = i <= current;
-      // If cycle was reset, backend deleted history, so date should be null for i > current
-      // (Even for i <= current, if we deleted everything, it might be null until we re-stamp, which is correct behavior for a fresh start)
-      const dateStr = getStampDateFromCustomer(customers.find((c) => c.member_code === memberCode), i);
+      // ✅ FIX: Only get date if the stamp is actually filled.
+      // This immediately hides "ghost dates" under empty circles.
+      const dateStr = filled ? getStampDateFromCustomer(customers.find((c) => c.member_code === memberCode), i) : null;
       
       boxes.push(
         <div key={i} className="flex flex-col items-center">
