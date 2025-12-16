@@ -1,4 +1,11 @@
 const db = require("../config/db");
+const Razorpay = require("razorpay"); // ✅ IMPORT RAZORPAY
+
+// ✅ INITIALIZE RAZORPAY
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
 // --- Register Customer ---
 exports.registerCustomer = async (req, res) => {
@@ -16,11 +23,8 @@ exports.registerCustomer = async (req, res) => {
         return { status: 409, body: { message: "Phone number already exists. Please Login." } };
       }
 
-      // 2. Generate CR Code safely
-      // Ensure sequence exists
+      // 2. Generate CR Code
       await client.query("CREATE SEQUENCE IF NOT EXISTS member_seq START WITH 1 INCREMENT BY 1");
-      
-      // Get next value
       const seqRes = await client.query("SELECT nextval('member_seq') as val");
       const nextVal = seqRes.rows[0].val;
       const memberCode = `CR${String(nextVal).padStart(4, '0')}`;
@@ -65,7 +69,7 @@ exports.registerCustomer = async (req, res) => {
   }
 };
 
-// --- Login By Phone (FIXED) ---
+// --- Login By Phone ---
 exports.loginByPhone = async (req, res) => {
   try {
     const { phone } = req.body;
@@ -73,7 +77,6 @@ exports.loginByPhone = async (req, res) => {
 
     const trimmedPhone = phone.trim();
 
-    // ✅ FIX: Added TRIM() to database field to ignore extra spaces
     const userRes = await db.query(
       `SELECT u.id, u.member_code, u.name, u.phone, 
               COALESCE(l.current_stamps, 0) as current_stamps, 
@@ -145,7 +148,34 @@ exports.getCard = async (req, res) => {
   }
 };
 
-// --- Add Online Stamp (FIXED) ---
+// --- ✅ NEW: Create Order (The Missing Logic) ---
+exports.createOrder = async (req, res) => {
+  try {
+    const { amount } = req.body;
+    
+    if (!amount) return res.status(400).json({ message: "Amount is required" });
+
+    const options = {
+      amount: amount * 100, // Convert to paise
+      currency: "INR",
+      receipt: "receipt_" + Date.now(),
+    };
+
+    const order = await razorpay.orders.create(options);
+
+    res.json({
+      success: true,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency
+    });
+  } catch (error) {
+    console.error("Razorpay Create Order Error:", error);
+    res.status(500).json({ success: false, message: "Order creation failed" });
+  }
+};
+
+// --- Add Online Stamp ---
 exports.addOnlineStamp = async (req, res) => {
   const { memberCode, amount } = req.body;
 
@@ -171,7 +201,6 @@ exports.addOnlineStamp = async (req, res) => {
         await client.query("INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards) VALUES ($1,0,0)", [user.id]);
       }
 
-      // Logic: Amount < 1000 -> No Stamp
       if (amount < 1000) {
         return {
           status: 200,
@@ -184,7 +213,6 @@ exports.addOnlineStamp = async (req, res) => {
         };
       }
 
-      // Logic: Stamps >= 11 -> No Stamp (Manual only)
       if (currentStamps >= 11) {
         return {
           status: 200,
@@ -197,16 +225,9 @@ exports.addOnlineStamp = async (req, res) => {
         };
       }
 
-      // Logic: Add Stamp
       const newStamps = currentStamps + 1;
-      
-      // Update Account
       await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
-      
-      // ✅ FIX: Delete existing history for this index to prevent duplicate/old dates
       await client.query("DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2", [user.id, newStamps]);
-      
-      // Insert New History (Current Time)
       await client.query("INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())", [user.id, newStamps]);
 
       return {
