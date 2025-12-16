@@ -5,12 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx (Final Auto-Refresh Version)
+ * Card.jsx (Final Version with Cancellation Handling)
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 11 Stamps AUTOMATED via Payment.
  * - 12th Stamp is MANUAL only.
- * - FIXED: Page Auto-Refreshes 2 seconds after payment success.
+ * - FIXED: Handles user cancellation (closing popup) properly.
  */
 
 function getIstDate(now = new Date()) {
@@ -209,13 +209,14 @@ export default function Card() {
 
     // 3. Options
     const options = {
-      key: "rzp_test_1DP5mmOlF5G5ag", // ✅ Test Key
+      key: process.env.REACT_APP_RAZORPAY_KEY_ID, // Uses .env live key
       amount: Number(payAmount) * 100, 
       currency: "INR",
       name: "CakeRoven",
       description: "Loyalty Stamp Payment",
       image: `${window.location.origin}/cakeroven-logo.png`, 
       
+      // ✅ SUCCESS HANDLER
       handler: async function (response) {
         try {
           // Call Backend
@@ -253,7 +254,6 @@ export default function Card() {
                    type: "info",
                    duration: 3000
                  });
-                 // Still refresh to clear input/ensure state sync
                  setTimeout(() => {
                    window.location.reload();
                  }, 2500);
@@ -282,6 +282,13 @@ export default function Card() {
           setPayAmount("");
         }
       },
+      // ✅ CANCELLATION HANDLER (If user closes popup)
+      modal: {
+        ondismiss: function() {
+          setIsPaying(false); // Stop loading spinner
+          setToast({ message: "Payment cancelled. No payment done.", type: "error" });
+        }
+      },
       prefill: {
         name: card?.name || "",
         contact: card?.phone || "",
@@ -294,6 +301,8 @@ export default function Card() {
     try {
       const paymentObject = new window.Razorpay(options);
       paymentObject.open();
+      
+      // Handle Technical Failures
       paymentObject.on('payment.failed', function (response){
           setToast({ message: "Payment Failed: " + response.error.description, type: "error" });
           setIsPaying(false);
@@ -540,7 +549,7 @@ export default function Card() {
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">
-                {stamps}/11
+                {stamps}/12
               </span>
               <p className="text-xs text-amber-100/80">
                 {isRewardReady
