@@ -5,12 +5,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx (Final Version - Secure & Robust)
+ * Card.jsx (Final Version with Cancellation Handling & Secure Payment)
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 11 Stamps AUTOMATED via Payment.
  * - 12th Stamp is MANUAL only.
- * - FIXED: Handles Render/Deployment Environment Variables properly.
+ * - FIXED: Handles user cancellation (closing popup) properly.
+ * - FIXED: Added Backend Order Creation & Key Validation.
  */
 
 function getIstDate(now = new Date()) {
@@ -197,17 +198,10 @@ export default function Card() {
       return;
     }
 
-    // 2. FETCH KEY SAFELY (Works for Create-React-App AND Vite/Render)
-    // We check both standard process.env and import.meta.env just to be safe
-    const razorpayKey = process.env.REACT_APP_RAZORPAY_KEY_ID || 
-                        (window.env && window.env.REACT_APP_RAZORPAY_KEY_ID);
-
-    if (!razorpayKey) {
-      setToast({ 
-        message: "System Error: Payment Key Missing. Please check Render Dashboard Settings.", 
-        type: "error" 
-      });
-      console.error("CRITICAL: REACT_APP_RAZORPAY_KEY_ID is missing. Add it to your .env file or Render Environment Variables.");
+    // 2. CHECK FOR KEY (Prevents "No Key Passed" Error)
+    if (!process.env.REACT_APP_RAZORPAY_KEY_ID) {
+      setToast({ message: "System Error: Payment Key Missing.", type: "error" });
+      console.error("MISSING REACT_APP_RAZORPAY_KEY_ID in .env file");
       return;
     }
 
@@ -234,15 +228,14 @@ export default function Card() {
         const orderData = await orderRes.json();
 
         if (!orderData.success) {
-            console.error("Order Creation Failed:", orderData);
-            throw new Error(orderData.message || "Could not create order ID from backend");
+            throw new Error("Could not create order ID from backend");
         }
 
         // --------------------------------------------------------
         // STEP B: Open Razorpay Options with Order ID
         // --------------------------------------------------------
         const options = {
-          key: razorpayKey, // ✅ Uses the safely fetched key
+          key: process.env.REACT_APP_RAZORPAY_KEY_ID, // Uses .env live key
           amount: orderData.amount, 
           currency: orderData.currency,
           name: "CakeRoven",
@@ -253,7 +246,7 @@ export default function Card() {
           // ✅ SUCCESS HANDLER
           handler: async function (response) {
             try {
-              // Call Backend to Verify
+              // Call Backend
               const verifyRes = await fetch(`${API_BASE}/api/customer/add-online-stamp`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -261,7 +254,7 @@ export default function Card() {
                   memberCode: card?.memberCode,
                   amount: Number(payAmount),
                   paymentId: response.razorpay_payment_id,
-                  orderId: response.razorpay_order_id, 
+                  orderId: response.razorpay_order_id, // Send for verification
                   signature: response.razorpay_signature
                 }),
               });
@@ -269,22 +262,42 @@ export default function Card() {
               const data = await verifyRes.json();
               
               if (verifyRes.ok) {
+                // Update local state immediately for visual feedback
                 if (data.card) setCard(data.card);
 
                 // Determine Message & Refresh Logic
                 if (data.stampAdded) {
+                   // SUCCESS: Stamp Added
                    setToast({ message: "Payment Successful! 1 Stamp Added. Refreshing...", type: "success", duration: 3000 });
-                   setTimeout(() => window.location.reload(), 2000);
+                   
+                   // ✅ AUTO REFRESH PAGE AFTER 2 SECONDS
+                   setTimeout(() => {
+                     window.location.reload();
+                   }, 2000);
+
                 } else {
+                   // NO STAMP (Low amount or limit reached)
                    if (data.reason === "low_amount") {
-                     setToast({ message: "Payment success, but <1000. No stamp.", type: "info", duration: 3000 });
-                     setTimeout(() => window.location.reload(), 2500);
+                     setToast({ 
+                       message: "Payment success, but <1000. No stamp. (Refreshing...)", 
+                       type: "info",
+                       duration: 3000
+                     });
+                     setTimeout(() => {
+                       window.location.reload();
+                     }, 2500);
+
                    } else if (data.reason === "limit_reached") {
-                     setToast({ message: "Payment successful! 12th stamp is manual.", type: "info", duration: 3000 });
-                     setTimeout(() => window.location.reload(), 2500);
+                     setToast({ message: "Payment successful! 12th stamp must be claimed manually. Refreshing...", type: "info", duration: 3000 });
+                     setTimeout(() => {
+                       window.location.reload();
+                     }, 2500);
+
                    } else {
                      setToast({ message: "Payment successful.", type: "success" });
-                     setTimeout(() => window.location.reload(), 2000);
+                     setTimeout(() => {
+                       window.location.reload();
+                     }, 2000);
                    }
                 }
               } else {
@@ -298,10 +311,10 @@ export default function Card() {
               setPayAmount("");
             }
           },
-          // ✅ CANCELLATION HANDLER
+          // ✅ CANCELLATION HANDLER (If user closes popup)
           modal: {
             ondismiss: function() {
-              setIsPaying(false);
+              setIsPaying(false); // Stop loading spinner
               setToast({ message: "Payment cancelled. No payment done.", type: "error" });
             }
           },
@@ -317,6 +330,7 @@ export default function Card() {
         const paymentObject = new window.Razorpay(options);
         paymentObject.open();
         
+        // Handle Technical Failures
         paymentObject.on('payment.failed', function (response){
             setToast({ message: "Payment Failed: " + response.error.description, type: "error" });
             setIsPaying(false);
@@ -611,7 +625,7 @@ export default function Card() {
                   if (filled) {
                     borderClasses = isFinal 
                         ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
-                        : "border-amber-200 bg-amber-100 shadow-md"; 
+                        : "border-amber-200 bg-amber-100 shadow-md"; // Fixed: Circle visible
                   } else {
                     borderClasses = isFinal 
                         ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
