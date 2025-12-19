@@ -28,6 +28,7 @@ import { API_BASE } from "../apiConfig";
  * - Automatic sound notification for stamp additions
  * - ✅ NEW: Manual Amount Entry per customer
  * - ✅ NEW: Transaction History Table (Grouped by Date, >1000 only)
+ * - ✅ NEW: Separate DOB Column in Table
  */
 
 const POLL_INTERVAL = 20_000;
@@ -533,7 +534,7 @@ export default function AdminDashboard() {
     const groups = {};
     transactions.forEach(tx => {
         const amount = Number(tx.amount);
-        // FILTER: Only show transactions >= 1000 AND where stamp was added
+        // STRICT FILTER: Only show transactions >= 1000 AND where stamp was added (to ensure clean history)
         if (amount >= 1000 && tx.stamp_added) {
             const dateKey = new Date(tx.created_at).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' });
             if (!groups[dateKey]) groups[dateKey] = { date: dateKey, items: [], total: 0 };
@@ -590,6 +591,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#fbf3df] to-[#f2e6c7] text-[#3b1512] font-sans">
       <audio ref={rewardAudioRef} src="/reward-chime.mp3" preload="auto" />
+      {/* ✅ Audio element for normal stamp sound */}
       <audio ref={stampAudioRef} src="/stamp.mp3" preload="auto" />
 
       {/* Header */}
@@ -707,6 +709,8 @@ export default function AdminDashboard() {
                         <th className="px-4 py-4 text-left w-12">#</th>
                         <th className="px-4 py-4 text-left">Member</th>
                         <th className="px-4 py-4 text-left">Contact</th>
+                        {/* ✅ NEW: Separate DOB Column */}
+                        <th className="px-4 py-4 text-left">DOB</th>
                         <th className="px-4 py-4 text-left w-[40%]">Current Progress</th>
                         <th className="px-4 py-4 text-left w-48">Manual Transaction</th>
                         <th className="px-4 py-4 text-center w-24">Rewards</th>
@@ -715,9 +719,9 @@ export default function AdminDashboard() {
 
                     <tbody className="divide-y divide-[#f3dfb1]">
                         {loading ? (
-                        <tr><td colSpan={6} className="px-6 py-10 text-center text-[#6b3a35]">Loading customers...</td></tr>
+                        <tr><td colSpan={7} className="px-6 py-10 text-center text-[#6b3a35]">Loading customers...</td></tr>
                         ) : customers.length === 0 ? (
-                        <tr><td colSpan={6} className="px-6 py-10 text-center text-[#6b3a35]/70">No customers found.</td></tr>
+                        <tr><td colSpan={7} className="px-6 py-10 text-center text-[#6b3a35]/70">No customers found.</td></tr>
                         ) : (
                         customers
                             .filter((c) => [c.name, c.phone, String(c.member_code)].join(" ").toLowerCase().includes(search.trim().toLowerCase()))
@@ -731,17 +735,20 @@ export default function AdminDashboard() {
                                     <td className="px-4 py-4 text-xs text-[#6b3a35]/60">{idx + 1}</td>
                                     <td className="px-4 py-4">
                                         <div className="font-bold text-[#3b1512]">{c.name}</div>
-                                        <div className="font-mono text-xs text--[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
+                                        <div className="font-mono text-xs text-[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
                                     </td>
                                     <td className="px-4 py-4 text-gray-600">
                                         <div>{c.phone}</div>
-                                        <div className="text-xs text-gray-400">{c.dob ? new Date(c.dob).toLocaleDateString("en-GB") : "No DOB"}</div>
+                                    </td>
+                                    {/* ✅ NEW: Separate DOB Cell */}
+                                    <td className="px-4 py-4 text-xs text-gray-500">
+                                        {c.dob ? new Date(c.dob).toLocaleDateString("en-GB") : "No DOB"}
                                     </td>
                                     <td className="px-4 py-4">
                                         {renderStampRowCompact(c.member_code, Number(c.current_stamps || 0))}
                                     </td>
                                     
-                                    {/* ✅ NEW: Manual Transaction Column */}
+                                    {/* ✅ Manual Transaction Column */}
                                     <td className="px-4 py-4">
                                         {!isRedeemReady ? (
                                             <div className="flex gap-2 items-center">
@@ -798,12 +805,30 @@ export default function AdminDashboard() {
                             <ul className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
                                 {stats.almostThere.map(m => (
                                     <li key={m.id} className="flex justify-between items-center bg-amber-50 p-2 rounded border border-amber-100">
-                                        <div><div className="text-xs font-bold text-amber-900">{m.member_code}</div><div className="text-[10px] text-gray-500">{m.name}</div></div>
+                                        <div>
+                                            {/* ✅ UPDATED: Showing ID clearly as requested */}
+                                            <div className="text-xs font-bold text-amber-900">{m.member_code}</div>
+                                            <div className="text-[10px] text-gray-500">{m.name}</div>
+                                        </div>
                                         <span className="text-xs font-bold bg-white px-2 py-0.5 rounded border border-amber-200">{m.current_stamps}/12</span>
                                     </li>
                                 ))}
                             </ul>
                         )}
+                    </div>
+                    
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-amber-200">
+                        <h4 className="font-bold mb-3 text-amber-900">🎂 Birthdays Today</h4>
+                         {stats.birthdaysToday.length === 0 ? <p className="text-xs text-gray-400 italic">No birthdays today.</p> : (
+                             <ul className="text-sm space-y-2">
+                                 {stats.birthdaysToday.map(b => (
+                                     <li key={b.id} className="flex justify-between border-b border-gray-100 pb-1">
+                                         <span>{b.name}</span>
+                                         <span className="font-mono text-xs text-gray-500">{b.member_code}</span>
+                                     </li>
+                                 ))}
+                             </ul>
+                         )}
                     </div>
                 </div>
             </div>
@@ -872,17 +897,17 @@ export default function AdminDashboard() {
                                         Total: ₹{group.total.toFixed(2)}
                                     </span>
                                 </div>
-                                {/* Boxes Container */}
+                                {/* Boxes Container (Side by Side) */}
                                 <div className="p-3 bg-white flex flex-wrap gap-3">
                                     {group.items.map(tx => (
                                         <div key={tx.id} className="bg-amber-50/50 border border-amber-100 rounded-lg px-3 py-2 flex items-center gap-3 min-w-[150px] shadow-sm hover:shadow-md transition">
                                             <div>
-                                                <div className="text-[10px] text-gray-400 uppercase font-bold">ID</div>
+                                                <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">ID</div>
                                                 <div className="text-xs font-mono font-bold text-amber-900">{tx.member_code}</div>
                                             </div>
                                             <div className="h-6 w-px bg-amber-200/50"></div>
                                             <div>
-                                                <div className="text-[10px] text-gray-400 uppercase font-bold">Amt</div>
+                                                <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Amt</div>
                                                 <div className="text-sm font-bold text-green-700">₹{Number(tx.amount)}</div>
                                             </div>
                                         </div>
