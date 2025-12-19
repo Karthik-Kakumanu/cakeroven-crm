@@ -70,17 +70,18 @@ exports.searchCustomer = async (req, res) => {
   try {
     // If query is 'all', return recently updated customers
     if (query.trim().toLowerCase() === 'all') {
-         const result = await db.query(
-            `SELECT u.id, u.member_code, u.name, u.phone, u.dob, 
-                    COALESCE(l.current_stamps, 0) as current_stamps, 
-                    COALESCE(l.total_rewards, 0) as total_rewards
-             FROM users u
-             LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-             ORDER BY l.updated_at DESC NULLS LAST
-             LIMIT 50`
-         );
-         return res.json(result.rows);
-    }
+  const result = await db.query(
+    `SELECT u.id, u.member_code, u.name, u.phone, u.dob, 
+            COALESCE(l.current_stamps, 0) as current_stamps, 
+            COALESCE(l.total_rewards, 0) as total_rewards
+     FROM users u
+     LEFT JOIN loyalty_accounts l ON l.user_id = u.id
+     ORDER BY CAST(SUBSTRING(u.member_code FROM 3) AS INTEGER) ASC
+     LIMIT 50`
+  );
+  return res.json(result.rows);
+}
+
 
     const result = await db.query(
       `SELECT u.id, u.member_code, u.name, u.phone, u.dob, 
