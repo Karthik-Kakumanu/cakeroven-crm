@@ -9,6 +9,10 @@ const compression = require("compression");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
 
+// ✅ Import Controllers directly to ensure all new features work
+const customerController = require("./controllers/customerController");
+const adminController = require("./controllers/adminController");
+
 const app = express();
 const port = process.env.PORT || 4000;
 
@@ -56,13 +60,29 @@ const asyncHandler = (fn) => (req, res, next) => {
 };
 
 /**
- * Routes (import routes here)
+ * =================================================================
+ * ✅ ROUTES (Directly mapped to Controllers for reliability)
+ * =================================================================
  */
-const adminRoutes = require("./routes/adminRoutes");
-const customerRoutes = require("./routes/customerRoutes");
 
-app.use("/api/admin", adminRoutes);
-app.use("/api/customer", customerRoutes);
+// --- CUSTOMER ROUTES ---
+app.post("/api/customer/register", customerController.registerCustomer);
+app.post("/api/customer/login-by-phone", customerController.loginByPhone);
+app.get("/api/customer/card/:memberCode", customerController.getCard);
+// New Payment & Stamp Routes
+app.post("/api/customer/create-order", customerController.createOrder);
+app.post("/api/customer/add-online-stamp", customerController.addOnlineStamp);
+
+// --- ADMIN ROUTES ---
+app.post("/api/admin/login", adminController.adminLogin);
+app.get("/api/admin/search", adminController.searchCustomer);
+// Updated Manual Stamp (Accepts Amount)
+app.post("/api/admin/stamp", adminController.addStamp);
+// Reset Logic
+app.post("/api/admin/reset", adminController.resetStamps);
+// ✅ New Insights Route
+app.get("/api/admin/insights", adminController.getInsights);
+
 
 /**
  * Health checks + root

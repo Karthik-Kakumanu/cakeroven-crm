@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET || "please-set-a-secure-secret";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
+// --- ADMIN LOGIN ---
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -33,8 +34,8 @@ exports.login = async (req, res) => {
   }
 };
 
-// ✅ UPDATED: FORCEFULLY GET ONLY THE LATEST DATE FOR EACH STAMP
-// This query groups by stamp_index and picks MAX(created_at), ignoring any old duplicates.
+// --- GET CUSTOMERS ---
+// Forcefully get only the latest date for each stamp index
 exports.getCustomers = async (req, res) => {
   try {
     const q = `
@@ -63,100 +64,126 @@ exports.getCustomers = async (req, res) => {
   }
 };
 
-async function lockUserByMemberCode(client, memberCode) {
-  const uQ = `SELECT id, member_code, name, phone, dob FROM users WHERE member_code = $1 FOR UPDATE`;
-  const uR = await client.query(uQ, [memberCode]);
-  if (!uR.rows.length) return null;
-  return uR.rows[0];
-}
+// --- SEARCH CUSTOMER ---
+exports.searchCustomer = async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.status(400).json({ message: "Query required" });
+  try {
+    const result = await db.query(
+      `SELECT u.id, u.member_code, u.name, u.phone, 
+              COALESCE(l.current_stamps, 0) as current_stamps, 
+              COALESCE(l.total_rewards, 0) as total_rewards
+       FROM users u
+       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
+       WHERE u.member_code ILIKE $1 OR u.phone ILIKE $1 OR u.name ILIKE $1
+       LIMIT 20`,
+      [`%${query.trim()}%`]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
+// --- ADD STAMP (Manual with Amount) ---
 exports.addStamp = async (req, res) => {
   try {
-    const { memberCode } = req.body;
-    if (!memberCode) return res.status(400).json({ message: "memberCode required" });
+    const { userId, amount } = req.body; // Expect amount now
+    const numAmount = Number(amount) || 0;
+
+    if (!userId) return res.status(400).json({ message: "User ID required" });
+    
+    // Allow 0 if explicitly wanted, but usually requires payment.
+    // Assuming 0 is allowed for "free" stamps if admin chooses, 
+    // but per requirement, amount should be entered.
 
     const result = await db.withClient(async (client) => {
-      // 1) lock user row
-      const user = await lockUserByMemberCode(client, memberCode);
-      if (!user) throw { status: 404, message: "Member not found" };
+      // 1) Get User Info
+      const userQ = `SELECT member_code, name FROM users WHERE id = $1`;
+      const userRes = await client.query(userQ, [userId]);
+      if (userRes.rows.length === 0) throw { status: 404, message: "User not found" };
+      const user = userRes.rows[0];
 
-      // 2) lock loyalty account row (if exists)
+      // 2) Lock Loyalty Account
       const laRes = await client.query(
         `SELECT user_id, current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE`,
-        [user.id]
+        [userId]
       );
 
       let current = 0;
       let rewards = 0;
 
       if (laRes.rows.length === 0) {
-        // create loyalty row
         await client.query(
           `INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards, updated_at)
            VALUES ($1, 0, 0, NOW())`,
-          [user.id]
+          [userId]
         );
-        current = 0;
-        rewards = 0;
       } else {
         current = Number(laRes.rows[0].current_stamps || 0);
         rewards = Number(laRes.rows[0].total_rewards || 0);
       }
 
-      // add one stamp
-      current += 1;
-      let awarded = false;
+      let stampAdded = false;
+      let message = "Transaction recorded.";
+
+      // 3) Logic: Add stamp if Amount >= 1000 AND Stamps < 11
+      // If amount < 1000, we record transaction but DO NOT add stamp.
+      // If stamps >= 11, we record transaction but DO NOT add stamp (limit reached).
       
-      if (current >= 12) {
-        // award
-        current = 0;
-        rewards += 1;
-        awarded = true;
+      if (numAmount >= 1000 && current < 11) {
+        current += 1;
+        stampAdded = true;
+        message = "Amount verified. Stamp added!";
 
-        // ✅ RESET: Delete ALL stamp history for this user so the new card is clean
-        await client.query(`DELETE FROM stamps_history WHERE user_id = $1`, [user.id]);
-      }
-
-      // update loyalty_accounts
-      await client.query(
-        `UPDATE loyalty_accounts SET current_stamps = $1, total_rewards = $2, updated_at = NOW() WHERE user_id = $3`,
-        [current, rewards, user.id]
-      );
-
-      // if awarded insert reward row
-      if (awarded) {
-        await client.query(`INSERT INTO rewards (user_id, issued_at) VALUES ($1, NOW())`, [user.id]);
-      }
-
-      // Record into stamps_history
-      if (current > 0) {
-         // ✅ CLEANUP: Delete ANY old history for this specific stamp index first.
-         // This ensures that when we insert the new date, it is the ONLY record for this slot.
-         await client.query(
-          `DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2`,
-          [user.id, current]
-         );
-
-         // Insert the new stamp
-         await client.query(
-          `INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())`,
-          [user.id, current]
+        // Update Account
+        await client.query(
+          `UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2`,
+          [current, userId]
         );
+
+        // Reset History for this slot (Overwrite old stamp data for this index)
+        await client.query(
+          `DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2`,
+          [userId, current]
+        );
+        await client.query(
+          `INSERT INTO stamps_history (user_id, stamp_index, amount, created_at) VALUES ($1, $2, $3, NOW())`,
+          [userId, current, numAmount]
+        );
+      } else {
+         if (numAmount < 1000) message = "Transaction saved. (Amount < 1000, no stamp)";
+         else if (current >= 11) message = "Transaction saved. (Limit reached for stamps)";
       }
+
+      // 4) ✅ RECORD IN TRANSACTIONS TABLE (For Admin Insights)
+      // Only record if amount > 0, or if you want to track 0 value transactions too.
+      if (numAmount > 0 || stampAdded) {
+          await client.query(
+            `INSERT INTO transactions (user_id, member_code, customer_name, amount, payment_method, stamp_added, created_at)
+             VALUES ($1, $2, $3, $4, 'manual', $5, NOW())`,
+            [userId, user.member_code, user.name, numAmount, stampAdded]
+          );
+      }
+
+      // Fetch Updated Data
+      const updatedRes = await client.query("SELECT current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1", [userId]);
 
       return {
-        card: {
+        success: true,
+        message,
+        data: updatedRes.rows[0], // Return updated stamps/rewards
+        card: { // Keep legacy structure if frontend expects it
           memberCode: user.member_code,
           name: user.name,
-          phone: user.phone,
           currentStamps: current,
-          totalRewards: rewards,
-        },
-        awarded,
+          totalRewards: rewards
+        }
       };
     });
 
-    return res.json({ message: "Stamp added", card: result.card, awarded: result.awarded });
+    return res.json(result);
   } catch (err) {
     console.error("addStamp error:", err);
     if (err && err.status) return res.status(err.status).json({ message: err.message });
@@ -164,14 +191,50 @@ exports.addStamp = async (req, res) => {
   }
 };
 
+// --- RESET STAMPS (Redeem) ---
+exports.resetStamps = async (req, res) => {
+  try {
+    const { userId } = req.body; // Changed from memberCode to userId for consistency with frontend
+    if (!userId) return res.status(400).json({ message: "User ID required" });
+
+    const result = await db.withClient(async (client) => {
+      const lRes = await client.query("SELECT current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE", [userId]);
+      if (lRes.rows.length === 0) throw { status: 404, message: "Account not found" };
+      
+      const currentStamps = Number(lRes.rows[0].current_stamps);
+      if (currentStamps < 11) throw { status: 400, message: "Not enough stamps to redeem" };
+
+      const newRewards = Number(lRes.rows[0].total_rewards) + 1;
+      
+      // Reset
+      await client.query("UPDATE loyalty_accounts SET current_stamps = 0, total_rewards = $1, updated_at = NOW() WHERE user_id = $2", [newRewards, userId]);
+      await client.query("DELETE FROM stamps_history WHERE user_id = $1", [userId]);
+
+      return { 
+          success: true, 
+          message: "Reward redeemed! Stamps reset.", 
+          data: { current_stamps: 0, total_rewards: newRewards } 
+      };
+    });
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("resetStamps error:", err);
+    return res.status(500).json({ message: err.message || "Server error" });
+  }
+};
+
+// --- REMOVE STAMP (Legacy - Keep for backward compatibility if needed) ---
 exports.removeStamp = async (req, res) => {
   try {
     const { memberCode } = req.body;
     if (!memberCode) return res.status(400).json({ message: "memberCode required" });
 
     const result = await db.withClient(async (client) => {
-      const user = await lockUserByMemberCode(client, memberCode);
-      if (!user) throw { status: 404, message: "Member not found" };
+      // Lock user by member code
+      const uQ = `SELECT id, member_code, name, phone, dob FROM users WHERE member_code = $1 FOR UPDATE`;
+      const uR = await client.query(uQ, [memberCode]);
+      if (!uR.rows.length) throw { status: 404, message: "Member not found" };
+      const user = uR.rows[0];
 
       const laRes = await client.query(
         `SELECT user_id, current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE`,
@@ -190,11 +253,9 @@ exports.removeStamp = async (req, res) => {
       }
 
       if (current > 0) {
-        // remove ALL records for this specific stamp index to avoid duplicates
         await client.query(`DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2`, [user.id, current]);
         current -= 1;
       } else if (rewards > 0) {
-        // undo a reward
         rewards -= 1;
         current = 11;
         await client.query(
@@ -227,6 +288,7 @@ exports.removeStamp = async (req, res) => {
   }
 };
 
+// --- GET REWARD HISTORY ---
 exports.getRewardHistoryFor = async (req, res) => {
   try {
     const { memberCode } = req.params;
@@ -245,47 +307,24 @@ exports.getRewardHistoryFor = async (req, res) => {
   }
 };
 
+// --- ✅ NEW: GET INSIGHTS (Transaction History for Admin Dashboard) ---
 exports.getInsights = async (req, res) => {
   try {
-    const stampsQ = `
-      SELECT to_char(day::date, 'YYYY-MM-DD') as date,
-             COALESCE(sum(cnt),0)::int as stamps
-      FROM (
-        SELECT (created_at::date) as day, count(*) as cnt
-        FROM stamps_history
-        WHERE created_at >= (current_date - INTERVAL '13 days')
-        GROUP BY day
-      ) t
-      RIGHT JOIN (
-        SELECT generate_series((current_date - INTERVAL '13 days')::date, current_date::date, '1 day') AS day
-      ) g USING (day)
-      GROUP BY day
-      ORDER BY day;
-    `;
-
-    const rewardsQ = `
-      SELECT to_char(month, 'Mon YYYY') AS month,
-             COALESCE(counts,0)::int AS rewards
-      FROM (
-        SELECT date_trunc('month', (current_date - (interval '5 months'))) + (n || ' months')::interval AS month
-        FROM generate_series(0,5) n
-      ) months
-      LEFT JOIN (
-        SELECT date_trunc('month', issued_at) as m, count(*) as counts
-        FROM rewards
-        WHERE issued_at >= (date_trunc('month', current_date) - INTERVAL '5 months')
-        GROUP BY m
-      ) r ON months.month = r.m
-      ORDER BY months.month;
-    `;
-
-    const [stampsRes, rewardsRes] = await Promise.all([db.query(stampsQ), db.query(rewardsQ)]);
-    const stampsOverTime = stampsRes.rows.map((r) => ({ date: r.date, stamps: Number(r.stamps) }));
-    const rewardsPerMonth = rewardsRes.rows.map((r) => ({ month: r.month, rewards: Number(r.rewards) }));
-
-    return res.json({ stamps_over_time: stampsOverTime, rewards_per_month: rewardsPerMonth });
+    // Fetch latest 500 transactions from the central transactions table
+    const result = await db.query(`
+      SELECT 
+        id, member_code, customer_name, amount, payment_method, stamp_added, created_at 
+      FROM transactions 
+      ORDER BY created_at DESC 
+      LIMIT 500
+    `);
+    
+    // Calculate Summary Stats (Optional, if you want charts later)
+    // For now, returning the raw list is what the frontend table expects.
+    
+    res.json(result.rows);
   } catch (err) {
     console.error("getInsights error:", err);
-    return res.status(500).json({ message: "Server error fetching insights", error: err.message });
+    res.status(500).json({ message: "Server error fetching insights" });
   }
 };

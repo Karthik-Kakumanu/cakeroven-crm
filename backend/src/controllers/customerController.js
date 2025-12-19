@@ -109,7 +109,7 @@ exports.loginByPhone = async (req, res) => {
   }
 };
 
-// --- Get Card (Updated to Fetch History) ---
+// --- Get Card ---
 exports.getCard = async (req, res) => {
   try {
     const { memberCode } = req.params;
@@ -187,13 +187,15 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// --- Add Online Stamp (Updated with Reset Logic & Amount) ---
+// --- Add Online Stamp (Updated with Transactions Table Logic) ---
 exports.addOnlineStamp = async (req, res) => {
   const { memberCode, amount } = req.body;
 
   if (!memberCode || !amount || amount <= 0) {
     return res.status(400).json({ message: "Invalid amount" });
   }
+
+  const numAmount = Number(amount);
 
   try {
     const result = await db.withClient(async (client) => {
@@ -215,65 +217,47 @@ exports.addOnlineStamp = async (req, res) => {
         await client.query("INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards) VALUES ($1,0,0)", [user.id]);
       }
 
-      // Check: Amount < 1000
-      if (amount < 1000) {
-        // Fetch current history to return updated state
-        const hRes = await client.query("SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", [user.id]);
-        return {
-          status: 200,
-          body: {
-            message: "Payment success (No Stamp < 1000)",
-            card: { ...user, currentStamps, totalRewards, history: hRes.rows },
-            stampAdded: false,
-            reason: "low_amount"
-          }
-        };
+      let stampAdded = false;
+      let reason = "success";
+      let newStamps = currentStamps;
+
+      // 3. Logic Checks
+      // We do NOT return early here anymore. We must record the transaction first.
+      if (numAmount < 1000) {
+        reason = "low_amount";
+        // Money collected, but NO stamp given
+      } else if (currentStamps >= 11) {
+        reason = "limit_reached";
+        // Money collected, but NO stamp given (User needs to redeem)
+      } else {
+        // Condition Met: Add Stamp
+        stampAdded = true;
+        newStamps = currentStamps + 1;
+        await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
+        
+        // Reset History for this slot (Overwrite old stamp data for this index)
+        await client.query("DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2", [user.id, newStamps]);
+        await client.query("INSERT INTO stamps_history (user_id, stamp_index, amount, created_at) VALUES ($1, $2, $3, NOW())", [user.id, newStamps, numAmount]);
       }
 
-      // Check: Max Stamps (12th is manual)
-      if (currentStamps >= 11) {
-        const hRes = await client.query("SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", [user.id]);
-        return {
-          status: 200,
-          body: {
-            message: "Payment success (12th stamp is manual)",
-            card: { ...user, currentStamps, totalRewards, history: hRes.rows },
-            stampAdded: false,
-            reason: "limit_reached"
-          }
-        };
-      }
-
-      // ✅ LOGIC: Add Stamp & Reset History for this slot
-      // If user had 11 stamps and reset, next is stamp 1.
-      // We delete the OLD stamp 1 data and insert the NEW stamp 1 data.
-      const newStamps = currentStamps + 1;
-      
-      // Update Count
-      await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
-      
-      // Delete old history for this specific stamp index (Auto-Loop/Reset logic)
-      await client.query("DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2", [user.id, newStamps]);
-      
-      // Insert new history with AMOUNT
+      // 4. ✅ INSERT TRANSACTION RECORD
+      // We insert into the 'transactions' table regardless of stamp outcome so Admin sees the money.
       await client.query(
-        "INSERT INTO stamps_history (user_id, stamp_index, amount, created_at) VALUES ($1, $2, $3, NOW())", 
-        [user.id, newStamps, amount]
+        `INSERT INTO transactions (user_id, member_code, customer_name, amount, payment_method, stamp_added, created_at)
+         VALUES ($1, $2, $3, $4, 'online', $5, NOW())`,
+        [user.id, user.member_code, user.name, numAmount, stampAdded]
       );
 
-      // Fetch Updated History for Frontend
-      const historyRes = await client.query(
-        "SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", 
-        [user.id]
-      );
+      // 5. Fetch Updated History for Card Response
+      const historyRes = await client.query("SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", [user.id]);
 
       return {
         status: 200,
         body: {
-          message: "Stamp added!",
+          message: stampAdded ? "Stamp added!" : "Payment successful",
           card: { ...user, currentStamps: newStamps, totalRewards, history: historyRes.rows },
-          stampAdded: true,
-          reason: "success"
+          stampAdded: stampAdded,
+          reason: reason
         }
       };
     });
