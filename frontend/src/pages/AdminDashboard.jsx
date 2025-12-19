@@ -735,7 +735,7 @@ export default function AdminDashboard() {
                                     <td className="px-4 py-4 text-xs text-[#6b3a35]/60">{idx + 1}</td>
                                     <td className="px-4 py-4">
                                         <div className="font-bold text-[#3b1512]">{c.name}</div>
-                                        <div className="font-mono text-xs text-[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
+                                        <div className="font-mono text-xs text--[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
                                     </td>
                                     <td className="px-4 py-4 text-gray-600">
                                         <div>{c.phone}</div>
@@ -900,16 +900,14 @@ export default function AdminDashboard() {
                                 {/* Boxes Container (Side by Side) */}
                                 <div className="p-3 bg-white flex flex-wrap gap-3">
                                     {group.items.map(tx => (
-                                        <div key={tx.id} className="bg-amber-50/50 border border-amber-100 rounded-lg px-3 py-2 flex items-center gap-3 min-w-[150px] shadow-sm hover:shadow-md transition">
-                                            <div>
-                                                <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">ID</div>
-                                                <div className="text-xs font-mono font-bold text-amber-900">{tx.member_code}</div>
-                                            </div>
-                                            <div className="h-6 w-px bg-amber-200/50"></div>
-                                            <div>
-                                                <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Amt</div>
-                                                <div className="text-sm font-bold text-green-700">₹{Number(tx.amount)}</div>
-                                            </div>
+                                        <div key={tx.id} className="bg-amber-50/50 border border-amber-100 rounded-lg px-3 py-2 flex flex-col items-center gap-1 min-w-[100px] shadow-sm hover:shadow-md transition text-center">
+                                            {/* ID */}
+                                            <div className="text-xs font-mono font-bold text-amber-900">{tx.member_code}</div>
+                                            <div className="w-full h-px bg-amber-200/50 my-1"></div>
+                                            {/* Amount */}
+                                            <div className="text-sm font-bold text-green-700">₹{Number(tx.amount)}</div>
+                                            {/* Method */}
+                                            <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">{tx.payment_method}</div>
                                         </div>
                                     ))}
                                 </div>

@@ -71,7 +71,7 @@ exports.searchCustomer = async (req, res) => {
     // If query is 'all', return recently updated customers
     if (query.trim().toLowerCase() === 'all') {
          const result = await db.query(
-            `SELECT u.id, u.member_code, u.name, u.phone, 
+            `SELECT u.id, u.member_code, u.name, u.phone, u.dob, 
                     COALESCE(l.current_stamps, 0) as current_stamps, 
                     COALESCE(l.total_rewards, 0) as total_rewards
              FROM users u
@@ -83,7 +83,7 @@ exports.searchCustomer = async (req, res) => {
     }
 
     const result = await db.query(
-      `SELECT u.id, u.member_code, u.name, u.phone, 
+      `SELECT u.id, u.member_code, u.name, u.phone, u.dob, 
               COALESCE(l.current_stamps, 0) as current_stamps, 
               COALESCE(l.total_rewards, 0) as total_rewards
        FROM users u
@@ -170,10 +170,9 @@ exports.addStamp = async (req, res) => {
       } else {
          if (numAmount < 1000) message = "Amount < 1000. No stamp added, transaction NOT recorded.";
          else if (current >= 11) message = "Limit reached (11 stamps). Please redeem.";
-         // We do NOT record transaction here per your specific request for strict history.
       }
 
-      // Fetch Updated Data to return to frontend
+      // Fetch Updated Data
       const updatedRes = await client.query("SELECT current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1", [userId]);
 
       return {
@@ -257,8 +256,6 @@ exports.removeStamp = async (req, res) => {
       } else if (rewards > 0) {
         rewards -= 1;
         current = 11; 
-        // Logic for undoing a reward is complex regarding history restoration, 
-        // usually we just reset current to 11.
       } else {
         return { card: { ...user, currentStamps: 0, totalRewards: 0 } };
       }
@@ -278,12 +275,9 @@ exports.removeStamp = async (req, res) => {
   }
 };
 
-// --- GET INSIGHTS (Strict Filter) ---
+// --- GET INSIGHTS ---
 exports.getInsights = async (req, res) => {
   try {
-    // Only fetch valid transactions (amount >= 1000 AND stamp_added = true)
-    // The insertion logic in addStamp/addOnlineStamp handles this filter, 
-    // but the query here retrieves whatever made it into the table.
     const result = await db.query(`
       SELECT 
         id, member_code, customer_name, amount, payment_method, stamp_added, created_at 
