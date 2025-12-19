@@ -5,33 +5,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx (Final Premium Version with History Table)
+ * Card.jsx (Final Universal Version)
  * - Rain falls BEHIND card (z-0).
  * - Stamps are CAKEROVEN LOGO when filled.
  * - 11 Stamps AUTOMATED via Payment.
  * - 12th Stamp is MANUAL only.
- * - FIXED: Smart Key Finder.
- * - NEW: Transaction History Table showing Date, Time, and Amount.
+ * - FIXED: Smart Key Finder (Works with VITE_ and REACT_APP_ prefixes).
  */
 
-// --- Helpers ---
 function getIstDate(now = new Date()) {
   const ist = new Date(now.getTime() + 330 * 60 * 1000);
   return ist;
-}
-
-// Format Date: "16 Dec"
-function formatDate(isoString) {
-  if (!isoString) return "-";
-  const date = new Date(isoString);
-  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
-
-// Format Time: "05:30 PM"
-function formatTime(isoString) {
-  if (!isoString) return "-";
-  const date = new Date(isoString);
-  return date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
 function getHolidayInfoForIst(dateIst) {
@@ -186,10 +170,6 @@ export default function Card() {
 
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
-  
-  // ✅ History Data from Backend
-  const history = Array.isArray(card?.history) ? card.history : [];
-  
   const isRewardReady = stamps >= 12;
 
   useEffect(() => {
@@ -209,7 +189,7 @@ export default function Card() {
   };
   const handleInlineLogoError = () => setLogoInlineVisible(false);
 
-  // --- Payment Handler ---
+  // --- Payment Handler (Smart Key Finder + Backend Logic) ---
   const handlePayment = async () => {
     // 1. Validation
     if (!payAmount || Number(payAmount) <= 0) {
@@ -217,28 +197,35 @@ export default function Card() {
       return;
     }
 
-    // 2. Smart Key Fetching
+    // 2. SMART KEY FETCHING (Fixes "Missing Key" on Render/Vite)
     let keyId = null;
+
+    // Check A: Vite Standard (import.meta.env)
+    // This is what Render/Vite usually needs
     try {
         // eslint-disable-next-line
         if (import.meta.env && import.meta.env.VITE_RAZORPAY_KEY_ID) {
             keyId = import.meta.env.VITE_RAZORPAY_KEY_ID;
         }
-    } catch (e) { /* Ignore */ }
+    } catch (e) { /* Ignore if not using Vite */ }
 
+    // Check B: Standard React (process.env)
+    // This is a fallback if you are using Create-React-App
     if (!keyId) {
         try {
             if (process.env.REACT_APP_RAZORPAY_KEY_ID) {
                 keyId = process.env.REACT_APP_RAZORPAY_KEY_ID;
             }
-        } catch (e) { /* Ignore */ }
+        } catch (e) { /* Ignore if process is undefined */ }
     }
 
+    // Check C: If Key is still missing
     if (!keyId) {
       setToast({ 
-        message: "System Error: Payment Key Missing.", 
+        message: "System Error: Payment Key Missing. Add VITE_RAZORPAY_KEY_ID to Render.", 
         type: "error" 
       });
+      console.error("CRITICAL: Could not find VITE_RAZORPAY_KEY_ID or REACT_APP_RAZORPAY_KEY_ID.");
       return;
     }
 
@@ -253,7 +240,9 @@ export default function Card() {
     }
 
     try {
-        // STEP A: Backend Order
+        // --------------------------------------------------------
+        // STEP A: Call Backend to Create Order ID (SECURE FLOW)
+        // --------------------------------------------------------
         const orderRes = await fetch(`${API_BASE}/api/customer/create-order`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -263,21 +252,26 @@ export default function Card() {
         const orderData = await orderRes.json();
 
         if (!orderData.success) {
+            console.error("Order Creation Failed:", orderData);
             throw new Error(orderData.message || "Could not create order ID from backend");
         }
 
-        // STEP B: Razorpay Options
+        // --------------------------------------------------------
+        // STEP B: Open Razorpay Options with Order ID
+        // --------------------------------------------------------
         const options = {
-          key: keyId, 
+          key: keyId, // ✅ Uses the safely fetched key
           amount: orderData.amount, 
           currency: orderData.currency,
           name: "CakeRoven",
           description: "Loyalty Stamp Payment",
           image: `${window.location.origin}/cakeroven-logo.png`, 
-          order_id: orderData.orderId,
+          order_id: orderData.orderId, // ✅ CRITICAL: Uses Backend Order ID
           
+          // ✅ SUCCESS HANDLER
           handler: async function (response) {
             try {
+              // Call Backend to Verify
               const verifyRes = await fetch(`${API_BASE}/api/customer/add-online-stamp`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -293,35 +287,40 @@ export default function Card() {
               const data = await verifyRes.json();
               
               if (verifyRes.ok) {
-                if (data.card) setCard(data.card); // Updates history immediately
+                if (data.card) setCard(data.card);
 
+                // Determine Message & Refresh Logic
                 if (data.stampAdded) {
-                   setToast({ message: "Payment Successful! 1 Stamp Added.", type: "success" });
+                   setToast({ message: "Payment Successful! 1 Stamp Added. Refreshing...", type: "success", duration: 3000 });
+                   setTimeout(() => window.location.reload(), 2000);
                 } else {
                    if (data.reason === "low_amount") {
-                     setToast({ message: "Payment success, but <1000. No stamp.", type: "info" });
+                     setToast({ message: "Payment success, but <1000. No stamp.", type: "info", duration: 3000 });
+                     setTimeout(() => window.location.reload(), 2500);
                    } else if (data.reason === "limit_reached") {
-                     setToast({ message: "Payment success! 12th stamp is manual.", type: "info" });
+                     setToast({ message: "Payment successful! 12th stamp is manual.", type: "info", duration: 3000 });
+                     setTimeout(() => window.location.reload(), 2500);
                    } else {
                      setToast({ message: "Payment successful.", type: "success" });
+                     setTimeout(() => window.location.reload(), 2000);
                    }
                 }
-                setTimeout(() => window.location.reload(), 2000);
               } else {
-                 setToast({ message: data.message || "Payment failed.", type: "error" });
+                 setToast({ message: data.message || "Payment succeeded but stamp update failed.", type: "error" });
               }
             } catch (err) {
               console.error("Backend stamp error", err);
-              setToast({ message: "Network error.", type: "error" });
+              setToast({ message: "Network error. Please contact Admin.", type: "error" });
             } finally {
               setIsPaying(false);
               setPayAmount("");
             }
           },
+          // ✅ CANCELLATION HANDLER
           modal: {
             ondismiss: function() {
               setIsPaying(false);
-              setToast({ message: "Payment cancelled.", type: "error" });
+              setToast({ message: "Payment cancelled. No payment done.", type: "error" });
             }
           },
           prefill: {
@@ -337,13 +336,13 @@ export default function Card() {
         paymentObject.open();
         
         paymentObject.on('payment.failed', function (response){
-            setToast({ message: "Payment Failed.", type: "error" });
+            setToast({ message: "Payment Failed: " + response.error.description, type: "error" });
             setIsPaying(false);
         });
 
     } catch (error) {
       console.error("Payment Error:", error);
-      setToast({ message: "Could not initiate payment.", type: "error" });
+      setToast({ message: "Could not initiate payment. Try again.", type: "error" });
       setIsPaying(false);
     }
   };
@@ -407,7 +406,10 @@ export default function Card() {
           <div className="h-4 w-44 rounded-full bg-amber-100/12 mb-5" />
           <div className="grid grid-cols-4 gap-2">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="h-9 w-9 rounded-full border border-amber-100/12 bg-black/5 animate-pulse" />
+              <div
+                key={i}
+                className="h-9 w-9 rounded-full border border-amber-100/12 bg-black/5 animate-pulse"
+              />
             ))}
           </div>
           <p className="mt-4 text-xs text-amber-100/70">Loading your card…</p>
@@ -424,8 +426,18 @@ export default function Card() {
           <h3 className="text-lg font-semibold mb-2">Could not load card</h3>
           <p className="text-sm mb-4 text-amber-700/90">{error}</p>
           <div className="flex gap-3">
-            <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-full bg-amber-600 text-white text-sm">Retry</button>
-            <button onClick={handleSwitchUser} className="px-4 py-2 rounded-full border border-amber-600 text-amber-600 text-sm">Switch user</button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-full bg-amber-600 text-white text-sm"
+            >
+              Retry
+            </button>
+            <button
+              onClick={handleSwitchUser}
+              className="px-4 py-2 rounded-full border border-amber-600 text-amber-600 text-sm"
+            >
+              Switch user
+            </button>
           </div>
         </div>
       </main>
@@ -436,7 +448,7 @@ export default function Card() {
   return (
     <main className="min-h-screen bg-amber-50 flex items-center justify-center p-4 relative overflow-hidden">
       
-      {/* Background Rain */}
+      {/* ✅ CAKEROVEN LOGO RAIN ANIMATION (Behind Card) ✅ */}
       <div className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden">
         {Array.from({ length: 15 }).map((_, i) => (
           <motion.img
@@ -444,10 +456,25 @@ export default function Card() {
             src="/cakeroven-logo.png"
             alt=""
             className="absolute w-12 h-12 md:w-16 md:h-16 object-contain"
-            initial={{ y: -150, x: `${Math.random() * 100}vw`, opacity: 0 }}
-            animate={{ y: "55vh", opacity: [0, 1, 1, 0] }}
-            transition={{ duration: 5 + Math.random() * 5, delay: i * 0.8, repeat: Infinity, ease: "linear" }}
-            style={{ left: `${Math.random() * 100}%`, filter: "brightness(0.9) opacity(0.5)" }}
+            initial={{
+              y: -150,
+              x: `${Math.random() * 100}vw`,
+              opacity: 0,
+            }}
+            animate={{
+              y: "55vh", 
+              opacity: [0, 1, 1, 0], 
+            }}
+            transition={{
+              duration: 5 + Math.random() * 5,
+              delay: i * 0.8,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+            style={{ 
+              left: `${Math.random() * 100}%`,
+              filter: "brightness(0.9) opacity(0.5)" 
+            }}
           />
         ))}
       </div>
@@ -460,199 +487,329 @@ export default function Card() {
         aria-labelledby="stamp-card-heading"
       >
         <div className="relative z-10 mx-auto bg-gradient-to-b from-[#4b130f] to-[#3a0f0b] rounded-3xl shadow-lg text-amber-100 p-4 sm:p-6 md:p-8 overflow-hidden">
-          
+          {/* subtle decorative glows */}
+          <div className="absolute -left-6 -top-10 w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
+          <div className="absolute -right-8 bottom-[-30px] w-36 h-36 rounded-full bg-amber-100/6 blur-2xl opacity-70 pointer-events-none" />
+
           {/* Header */}
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3 min-w-0">
               {logoInlineVisible && (
-                <img src={inlineLogoSrc} alt="Logo" onError={handleInlineLogoError} className="h-10 w-10 rounded-full object-contain bg-white/3 p-1 flex-shrink-0" />
+                <img
+                  src={inlineLogoSrc}
+                  alt="CakeRoven logo"
+                  onError={handleInlineLogoError}
+                  className="h-10 w-10 rounded-full object-contain bg-white/3 p-1 flex-shrink-0"
+                />
               )}
+
               <div className="min-w-0">
-                <p className="text-xs tracking-widest uppercase text-amber-100/65">CAKEROVEN LOYALTY</p>
-                <h1 className="text-lg sm:text-xl font-extrabold leading-tight mt-1">Digital Stamp Card</h1>
+                <p className="text-xs tracking-widest uppercase text-amber-100/65">
+                  CAKEROVEN LOYALTY
+                </p>
+                <h1
+                  id="stamp-card-heading"
+                  className="text-lg sm:text-xl font-extrabold leading-tight mt-1"
+                >
+                  Digital Stamp Card
+                </h1>
               </div>
             </div>
+
             <div className="text-right">
               <p className="text-xs uppercase text-amber-100/60">Member ID</p>
               <p className="text-sm font-mono font-semibold mt-1">{memberCode}</p>
             </div>
           </div>
 
-          {/* User Info */}
+          {/* ======================================================== */}
+          {/* ✅ FIXED HOLDER INFO + RESPONSIVE BADGE UI ✅ */}
+          {/* ======================================================== */}
           <div className="mb-6 flex flex-row items-end justify-between gap-2 relative">
+            
+            {/* LEFT SIDE: Name and Phone (Takes available space) */}
             <div className="flex flex-col gap-1 min-w-0 flex-1">
               <div className="min-w-0">
                 <p className="text-xs text-amber-100/70">Card Holder</p>
                 <p className="text-base font-semibold truncate pr-1">{card?.name || "—"}</p>
               </div>
+
               <div className="flex items-center gap-2 text-sm flex-wrap">
                 <span className="text-xs text-amber-100/70">Phone:</span>
-                <span className="font-mono text-sm">{showPhone ? card?.phone : maskedPhone}</span>
-                <button onClick={() => setShowPhone((s) => !s)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition">{showPhone ? "HIDE" : "SHOW"}</button>
+                <span className="font-mono text-sm">
+                  {showPhone ? card?.phone : maskedPhone}
+                </span>
+                <button
+                  aria-pressed={showPhone}
+                  onClick={() => setShowPhone((s) => !s)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-amber-100/20 hover:bg-amber-100/6 transition"
+                >
+                  {showPhone ? "HIDE" : "SHOW"}
+                </button>
               </div>
             </div>
-            <motion.div animate={{ scale: [1, 1.02, 1], opacity: [0.95, 1, 0.95] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }} className="flex-shrink-0 relative z-10">
+
+            {/* RIGHT SIDE: Animated Promo Badge (Scaled down on mobile to prevent overlap) */}
+            <motion.div
+              animate={{ 
+                scale: [1, 1.02, 1],
+                opacity: [0.95, 1, 0.95],
+              }}
+              transition={{
+                duration: 2.5,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+              className="flex-shrink-0 relative z-10"
+            >
               <div className="relative group">
                 <div className="absolute inset-0 bg-[#fbbf24] blur opacity-20 rounded-lg group-hover:opacity-30 transition"></div>
                 <div className="relative px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-[#fbbf24]/40 bg-[#fbbf24]/10 shadow-[0_0_15px_rgba(251,191,36,0.15)] backdrop-blur-sm">
-                  <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-[#fbbf24]/80 font-bold mb-0.5 text-right leading-none whitespace-nowrap">Unlocks after 11 stamps</p>
-                  <p className="text-[11px] sm:text-sm font-extrabold text-[#fbbf24] whitespace-nowrap leading-none shadow-black drop-shadow-md">₹2000 Food FREE ✨</p>
+                  <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-[#fbbf24]/80 font-bold mb-0.5 text-right leading-none whitespace-nowrap">
+                    Unlocks after 11 stamps
+                  </p>
+                  <p className="text-[11px] sm:text-sm font-extrabold text-[#fbbf24] whitespace-nowrap leading-none shadow-black drop-shadow-md">
+                    ₹2000 Food FREE ✨
+                  </p>
                 </div>
               </div>
             </motion.div>
-          </div>
 
-          {/* Stamps Grid */}
+          </div>
+          {/* ======================================================== */}
+
+
+          {/* Progress Bar */}
           <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">{stamps}/12</span>
-              <p className="text-xs text-amber-100/80">{isRewardReady ? "Reward unlocked! Claim below." : "stamps to your next treat."}</p>
+              <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">
+                {stamps}/12
+              </span>
+              <p className="text-xs text-amber-100/80">
+                {isRewardReady
+                  ? "Reward unlocked! Claim below."
+                  : "stamps to your next treat."}
+              </p>
             </div>
-            <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">PAY ₹1000+ = 1 STAMP</div>
+
+            <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">
+              PAY ₹1000+ = 1 STAMP
+            </div>
           </div>
 
+          {/* Stamp Board */}
           <div className="rounded-2xl bg-[#3d0f0b]/60 border border-amber-100/6 p-3 mb-3 relative">
+            <div className="flex items-start justify-between mb-2 gap-2">
+              <div className="text-sm text-amber-100/80">
+                <p className="text-xs">
+                  Collect <span className="font-semibold">11 stamps</span> to
+                  unlock a special CakeRoven treat 🎁
+                </p>
+                {rewards > 0 && (
+                  <p className="mt-1 text-amber-200/90 text-xs">
+                    Rewards earned: <span className="font-semibold">{rewards}</span>
+                  </p>
+                )}
+              </div>
+              <span className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20">
+                BOARD
+              </span>
+            </div>
+
             <div className="grid grid-cols-4 gap-3 justify-center">
               <AnimatePresence initial={false}>
                 {Array.from({ length: 12 }).map((_, i) => {
                   const index = i + 1;
                   const filled = stamps >= index;
                   const isFinal = index === 12;
+
                   const sizeClasses = isFinal ? "h-12 w-12 sm:h-14 sm:w-14" : "h-10 w-10 md:h-12 md:w-12";
-                  const borderClasses = filled ? (isFinal ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" : "border-amber-200 bg-amber-100 shadow-md") : (isFinal ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" : "border-amber-100/20 bg-transparent hover:bg-amber-100/6");
+                  
+                  let borderClasses = "";
+                  if (filled) {
+                    borderClasses = isFinal 
+                        ? "border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.5)] bg-[#501914]" 
+                        : "border-amber-200 bg-amber-100 shadow-md"; 
+                  } else {
+                    borderClasses = isFinal 
+                        ? "border-amber-400/50 bg-amber-400/5 shadow-[0_0_10px_rgba(251,191,36,0.2)]" 
+                        : "border-amber-100/20 bg-transparent hover:bg-amber-100/6";
+                  }
 
                   return (
-                    <motion.div key={index} initial="hidden" animate={filled ? "filledPulse" : "show"} variants={stampVariants} custom={i} className={`relative flex items-center justify-center rounded-full border transition-all ${sizeClasses} ${borderClasses}`}>
+                    <motion.div
+                      key={index}
+                      aria-label={`Stamp ${index} ${filled ? "collected" : "empty"}`}
+                      initial="hidden"
+                      animate={filled ? "filledPulse" : "show"}
+                      variants={stampVariants}
+                      custom={i}
+                      className={`relative flex items-center justify-center rounded-full border transition-all ${sizeClasses} ${borderClasses}`}
+                    >
                       {filled ? (
                           <div className="relative w-full h-full p-1.5 flex items-center justify-center">
-                           <motion.img src="/cakeroven-logo.png" alt="Stamped" className="w-full h-full object-contain drop-shadow-sm" initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 200 }} />
-                           {isFinal && <div className="absolute inset-0 rounded-full border-2 border-amber-300 animate-ping opacity-20" />}
+                           <motion.img 
+                             src="/cakeroven-logo.png"
+                             alt="Stamped"
+                             className="w-full h-full object-contain drop-shadow-sm"
+                             initial={{ scale: 0, rotate: -45 }}
+                             animate={{ scale: 1, rotate: 0 }}
+                             transition={{ type: "spring", stiffness: 200 }}
+                           />
+                           {isFinal && (
+                             <div className="absolute inset-0 rounded-full border-2 border-amber-300 animate-ping opacity-20" />
+                           )}
                         </div>
                       ) : (
-                        <span className={`font-semibold pointer-events-none select-none ${isFinal ? "text-xl" : "text-xs md:text-sm"} text-amber-100/80`}>{isFinal ? "🎁" : index}</span>
+                        <span className={`font-semibold pointer-events-none select-none ${isFinal ? "text-xl" : "text-xs md:text-sm"} text-amber-100/80`}>
+                          {isFinal ? "🎁" : index}
+                        </span>
                       )}
                     </motion.div>
                   );
                 })}
               </AnimatePresence>
             </div>
+            {/* inner border */}
             <div className="pointer-events-none absolute inset-0 rounded-2xl border border-amber-100/8 m-0.5" />
           </div>
 
-          {/* Payment Section */}
+          {/* ======================================================== */}
+          {/* ✅ PAYMENT SECTION (Razorpay + Auto Stamp) ✅ */}
+          {/* ======================================================== */}
           <div className="rounded-2xl bg-gradient-to-br from-black/20 to-black/40 border border-amber-100/10 p-4 mb-4 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-amber-100 flex items-center gap-2"><span className="bg-amber-500/10 p-1 rounded-md">💳</span> Make a Payment</h3>
+              <h3 className="text-sm font-bold text-amber-100 flex items-center gap-2">
+                <span className="bg-amber-500/10 p-1 rounded-md">💳</span>
+                Make a Payment
+              </h3>
               <span className="text-[10px] uppercase text-amber-100/40 tracking-wider">Secure</span>
             </div>
+            
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1 group">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-100/50 font-sans">₹</span>
-                <input type="number" placeholder="Enter Amount" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} min="1" className="w-full pl-7 pr-3 py-2.5 rounded-xl bg-black/20 border border-amber-100/20 text-amber-100 placeholder-amber-100/20 focus:outline-none focus:border-amber-400/60 focus:bg-black/40 transition-all font-mono" />
+                <input
+                  type="number"
+                  placeholder="Enter Amount"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  min="1"
+                  className="w-full pl-7 pr-3 py-2.5 rounded-xl bg-black/20 border border-amber-100/20 text-amber-100 placeholder-amber-100/20 focus:outline-none focus:border-amber-400/60 focus:bg-black/40 transition-all font-mono"
+                />
               </div>
-              <motion.button whileTap={{ scale: 0.97 }} onClick={handlePayment} disabled={isPaying} className="relative px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 text-[#3d0f0b] font-bold text-sm shadow-lg shadow-amber-900/40 hover:brightness-110 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[120px]">
-                {isPaying ? <><div className="h-4 w-4 rounded-full border-2 border-[#3d0f0b]/30 border-t-[#3d0f0b] animate-spin" /><span>Wait...</span></> : "Pay Now"}
+              
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={handlePayment}
+                disabled={isPaying}
+                className="relative px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 text-[#3d0f0b] font-bold text-sm shadow-lg shadow-amber-900/40 hover:brightness-110 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[120px]"
+              >
+                {isPaying ? (
+                  <>
+                    <div className="h-4 w-4 rounded-full border-2 border-[#3d0f0b]/30 border-t-[#3d0f0b] animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  "Pay Now"
+                )}
               </motion.button>
             </div>
+            
+            {/* Quick Select Helper */}
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
               {[500, 1000, 2000, 5000].map((amt) => (
-                <button key={amt} onClick={() => setPayAmount(amt.toString())} className="px-3 py-1 rounded-lg border border-amber-100/10 bg-amber-100/5 text-xs text-amber-100/60 hover:bg-amber-100/10 hover:border-amber-100/30 transition">₹{amt}</button>
+                <button
+                  key={amt}
+                  onClick={() => setPayAmount(amt.toString())}
+                  className="px-3 py-1 rounded-lg border border-amber-100/10 bg-amber-100/5 text-xs text-amber-100/60 hover:bg-amber-100/10 hover:border-amber-100/30 transition"
+                >
+                  ₹{amt}
+                </button>
               ))}
             </div>
           </div>
-
-          {/* ======================================================== */}
-          {/* ✅ FABULOUS TRANSACTION HISTORY TABLE ✅ */}
-          {/* ======================================================== */}
-          <div className="rounded-2xl bg-gradient-to-b from-[#2a0a08]/80 to-[#1a0504]/80 border border-amber-500/20 overflow-hidden mb-4 backdrop-blur-md shadow-2xl">
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-amber-500/10 bg-[#3d0f0b]/40 flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-amber-100/70 flex items-center gap-2">
-                <span className="text-amber-400 text-sm">📜</span> Journey History
-              </h3>
-              <span className="text-[10px] text-amber-100/40">Current Cycle</span>
-            </div>
-
-            {/* List */}
-            <div className="p-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-              {history && history.length > 0 ? (
-                <div className="space-y-1.5">
-                  {history.map((tx, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors group"
-                    >
-                      {/* Left: Index & Date */}
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-[#3d0f0b] font-bold font-mono text-sm shadow-lg shadow-amber-500/20 group-hover:scale-110 transition-transform">
-                          {tx.stamp_index || idx + 1}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-medium text-amber-100/90">
-                            {formatDate(tx.created_at)}
-                          </span>
-                          <span className="text-[10px] text-amber-100/50">
-                            {formatTime(tx.created_at)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Right: Amount */}
-                      <div className="text-right">
-                        <span className="block font-mono text-sm font-bold text-amber-300">
-                          ₹{tx.amount || 0}
-                        </span>
-                        <span className="text-[9px] uppercase tracking-wide text-green-400/80">
-                          Paid
-                        </span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-8 text-center flex flex-col items-center gap-2 opacity-50">
-                  <div className="text-3xl grayscale">🏺</div>
-                  <p className="text-xs text-amber-100/60">No stamps collected yet.<br/>Start your journey!</p>
-                </div>
-              )}
-            </div>
-            
-            {/* Total Footer */}
-            {history.length > 0 && (
-              <div className="px-4 py-2 bg-black/20 border-t border-amber-500/10 flex justify-between items-center text-xs">
-                <span className="text-amber-100/50">Total Spent</span>
-                <span className="font-mono font-bold text-amber-400">
-                  ₹{history.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)}
-                </span>
-              </div>
-            )}
-          </div>
           {/* ======================================================== */}
 
-          {/* Footer Info */}
+
+          {/* Info & actions */}
           <div className="text-xs text-amber-100/75 space-y-2">
-            <p>Cash: Show at counter, Online: Pay above. <span className="font-semibold">₹1000+ = 1 stamp</span>.</p>
+            <p>
+              Cash: Show at counter, Online: Pay using the box above. 
+              <span className="font-semibold"> ₹1000 or more</span> earns{" "}
+              <span className="font-semibold">1 stamp</span>.
+            </p>
+            <p>
+              On your 12th visit, enjoy up to ₹2000 worth of food FREE.
+              If the bill exceeds ₹2000, only the balance amount is payable.
+              Unused free value does not carry forward.
+            </p>
+            <p>
+              Only 1 bill = 1 stamp. No bill splitting allowed.
+            </p>
+
             <div className="flex items-center gap-2 mt-2">
-              <button onClick={handleSwitchUser} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-100/20 text-xs hover:bg-amber-100/6 transition">Not you? Switch user</button> 
+              <button
+                onClick={handleSwitchUser}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-100/20 text-xs hover:bg-amber-100/6 transition"
+              >
+                Not you? Switch user
+              </button> 
+
               {isRewardReady && (
-                <motion.button onClick={() => { setCelebrate(true); setTimeout(() => setCelebrate(false), 1200); }} className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100/10 border border-amber-100/30 text-xs">🎉 Claim Reward</motion.button>
+                <motion.button
+                  onClick={() => {
+                    setCelebrate(true);
+                    setTimeout(() => setCelebrate(false), 1200);
+                  }}
+                  className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100/10 border border-amber-100/30 text-xs"
+                >
+                  🎉 Claim Reward
+                </motion.button>
               )}
             </div>
-            <p>* Conditions apply on 25th Dec & 31st Dec.</p> 
+            <p>
+              * Conditions apply on 25th Dec & 31st Dec - 1st Jan.
+            </p> 
           </div>
         </div>
 
-        {/* Celebrate Overlay */}
+        {/* celebrate overlay */}
         <AnimatePresence>
           {celebrate && (
-            <motion.div key="celebrate" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.28 }} className="absolute inset-0 rounded-3xl bg-gradient-to-r from-transparent via-amber-100/6 to-transparent" />
+            <motion.div
+              key="celebrate"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.28 }}
+                className="absolute inset-0 rounded-3xl bg-gradient-to-r from-transparent via-amber-100/6 to-transparent"
+              />
               <div className="absolute inset-0">
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <motion.span key={i} initial={{ y: 0, x: 0, opacity: 0 }} animate={{ y: [-6 - i * 2, -12 - i * 2, -6 - i * 2], x: [-8 + i * 3, 8 - i * 2, -8 + i * 3], opacity: 1 }} transition={{ duration: 1.1, delay: i * 0.04 }} className="absolute bg-amber-100 rounded-full" style={{ width: `${4 + (i % 3)}px`, height: `${4 + (i % 3)}px`, left: `${8 + i * 10}%`, top: `${60 - i * 6}%`, opacity: 0.9 }} />
+                  <motion.span
+                    key={i}
+                    initial={{ y: 0, x: 0, opacity: 0 }}
+                    animate={{
+                      y: [-6 - i * 2, -12 - i * 2, -6 - i * 2],
+                      x: [-8 + i * 3, 8 - i * 2, -8 + i * 3],
+                      opacity: 1,
+                    }}
+                    transition={{ duration: 1.1, delay: i * 0.04 }}
+                    className="absolute bg-amber-100 rounded-full"
+                    style={{
+                      width: `${4 + (i % 3)}px`,
+                      height: `${4 + (i % 3)}px`,
+                      left: `${8 + i * 10}%`,
+                      top: `${60 - i * 6}%`,
+                      opacity: 0.9,
+                    }}
+                  />
                 ))}
               </div>
             </motion.div>
@@ -660,14 +817,32 @@ export default function Card() {
         </AnimatePresence>
       </motion.section>
 
-      {/* Toast Notification */}
+      {/* ✅ NEW: Professional Centered Toast Notification ✅ */}
       <AnimatePresence>
         {toast && (
-          <motion.div initial={{ opacity: 0, y: 50, x: "-50%" }} animate={{ opacity: 1, y: 0, x: "-50%" }} exit={{ opacity: 0, y: 20, x: "-50%" }} transition={{ type: "spring", stiffness: 400, damping: 30 }} className="fixed bottom-10 left-1/2 z-50 w-[90%] max-w-[360px]">
-            <div className={`p-4 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md ${toast.type === 'success' ? 'bg-[#501914]/95 text-amber-100 border-amber-500/50' : toast.type === 'error' ? 'bg-red-900/90 text-white border-red-500/50' : 'bg-gray-800/95 text-white border-white/10'}`}>
-              <span className="text-2xl flex-shrink-0">{toast.type === 'success' ? '🎉' : toast.type === 'error' ? '⚠️' : 'ℹ️'}</span>
-              <div className="flex-1"><p className="text-sm font-medium leading-snug">{toast.message}</p></div>
-              <button onClick={()=>setToast(null)} className="opacity-50 hover:opacity-100 p-1">✕</button>
+          <motion.div 
+            initial={{ opacity: 0, y: 50, x: "-50%" }} 
+            animate={{ opacity: 1, y: 0, x: "-50%" }} 
+            exit={{ opacity: 0, y: 20, x: "-50%" }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="fixed bottom-10 left-1/2 z-50 w-[90%] max-w-[360px]"
+          >
+            <div className={`p-4 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md
+              ${toast.type === 'success' ? 'bg-[#501914]/95 text-amber-100 border-amber-500/50' : 
+                toast.type === 'error' ? 'bg-red-900/90 text-white border-red-500/50' : 
+                'bg-gray-800/95 text-white border-white/10'}`}>
+              
+              <span className="text-2xl flex-shrink-0">
+                {toast.type === 'success' ? '🎉' : toast.type === 'error' ? '⚠️' : 'ℹ️'}
+              </span>
+              
+              <div className="flex-1">
+                <p className="text-sm font-medium leading-snug">{toast.message}</p>
+              </div>
+              
+              <button onClick={()=>setToast(null)} className="opacity-50 hover:opacity-100 p-1">
+                ✕
+              </button>
             </div>
           </motion.div>
         )}
