@@ -275,6 +275,120 @@ exports.removeStamp = async (req, res) => {
   }
 };
 
+// --- UNDO LAST STAMP (ADMIN ONLY, PASSWORD PROTECTED, TODAY ONLY) ---
+exports.undoLastStamp = async (req, res) => {
+  try {
+    const { userId, password } = req.body;
+    const adminId = req.admin.uid;
+
+    if (!userId || !password) {
+      return res.status(400).json({ message: "User ID and password required" });
+    }
+
+    // 1️⃣ Verify admin delete password
+    const adminRes = await db.query(
+      "SELECT delete_password_hash FROM admin_users WHERE id = $1",
+      [adminId]
+    );
+
+    if (!adminRes.rows.length) {
+      return res.status(403).json({ message: "Admin not found" });
+    }
+
+    const valid = await bcrypt.compare(
+      password,
+      adminRes.rows[0].delete_password_hash
+    );
+
+    if (!valid) {
+      return res.status(401).json({ message: "Invalid admin password" });
+    }
+
+    // 2️⃣ Transaction-safe undo
+    const result = await db.withClient(async (client) => {
+      // Lock account
+      const laRes = await client.query(
+        "SELECT current_stamps FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE",
+        [userId]
+      );
+
+      if (!laRes.rows.length || laRes.rows[0].current_stamps <= 0) {
+        throw { status: 400, message: "No stamps to undo" };
+      }
+
+      const current = laRes.rows[0].current_stamps;
+
+      // Get last stamp (today only)
+      const stampRes = await client.query(
+        `
+        SELECT id, created_at
+        FROM stamps_history
+        WHERE user_id = $1 AND stamp_index = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+        `,
+        [userId, current]
+      );
+
+      if (!stampRes.rows.length) {
+        throw { status: 400, message: "No stamp history found" };
+      }
+
+      const stampDate = new Date(stampRes.rows[0].created_at).toDateString();
+      const today = new Date().toDateString();
+
+      if (stampDate !== today) {
+        throw {
+          status: 403,
+          message: "Only today’s stamp can be undone",
+        };
+      }
+
+      // Delete stamp history
+      await client.query(
+        "DELETE FROM stamps_history WHERE id = $1",
+        [stampRes.rows[0].id]
+      );
+
+      // Delete latest transaction for this user today
+      await client.query(
+        `
+        DELETE FROM transactions
+        WHERE id = (
+          SELECT id FROM transactions
+          WHERE user_id = $1
+            AND stamp_added = true
+            AND DATE(created_at) = CURRENT_DATE
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+        `,
+        [userId]
+      );
+
+      // Update loyalty account
+      await client.query(
+        "UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2",
+        [current - 1, userId]
+      );
+
+      return { success: true, current_stamps: current - 1 };
+    });
+
+    return res.json({
+      message: "Last stamp undone successfully",
+      data: result,
+    });
+
+  } catch (err) {
+    console.error("Undo stamp error:", err);
+    return res.status(err.status || 500).json({
+      message: err.message || "Server error",
+    });
+  }
+};
+
+
 // --- GET INSIGHTS ---
 exports.getInsights = async (req, res) => {
   try {

@@ -537,6 +537,39 @@ export default function AdminDashboard() {
   }
 };
 
+const handleUndoStamp = async (customer) => {
+  const password = window.prompt(
+    `Enter admin password to UNDO last stamp for ${customer.member_code}`
+  );
+  if (!password) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/undo-last-stamp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        userId: customer.id,
+        password,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert(data.message);
+      fetchCustomers({ silence: true });
+    } else {
+      alert(data.message);
+    }
+  } catch (err) {
+    alert("Server error");
+  }
+};
+
+
   // CSV export
   const exportCSV = (rows, filename = "cakeroven_customers.csv") => {
     if (!rows || !rows.length) {
@@ -800,13 +833,26 @@ export default function AdminDashboard() {
                                                         className="w-full pl-5 pr-2 py-1.5 rounded-lg border border-gray-300 text-sm focus:border-amber-500 outline-none"
                                                     />
                                                 </div>
-                                                <button 
-                                                    onClick={() => handleAddStampWithAmount(c)}
-                                                    disabled={isBusy || !amountVal}
-                                                    className="bg-[#4b130f] text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase hover:bg-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {isBusy ? "..." : "Add"}
-                                                </button>
+                                                <div className="flex gap-2 items-center">
+  <button
+    onClick={() => handleAddStampWithAmount(c)}
+    disabled={isBusy || !amountVal}
+    className="bg-[#4b130f] text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+  >
+    Add
+  </button>
+
+  {c.current_stamps > 0 && (
+    <button
+      onClick={() => handleUndoStamp(c)}
+      className="bg-red-600 text-white px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase hover:bg-red-700"
+      title="Undo last stamp (today only)"
+    >
+      Undo
+    </button>
+  )}
+</div>
+
                                             </div>
                                         ) : (
                                             <button 

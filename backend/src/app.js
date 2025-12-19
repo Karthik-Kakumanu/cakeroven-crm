@@ -90,6 +90,13 @@ app.post(
   adminController.deleteTransactionsByDate
 );
 
+app.post(
+  "/api/admin/undo-last-stamp",
+  adminAuth,
+  adminController.undoLastStamp
+);
+
+
 
 /**
  * Health checks + root
