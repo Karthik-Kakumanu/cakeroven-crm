@@ -186,7 +186,7 @@ export default function AdminDashboard() {
             return;
           }
           console.error("Failed loading customers:", data);
-          alert(data.message || "Failed to load customers");
+          alert("Failed to load customers");
           return;
         }
 
@@ -880,7 +880,7 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="rounded-2xl bg-white shadow-md p-5 border border-[#f3dfb1]">
                     <h3 className="text-sm font-bold text-[#3b1512] mb-4 flex items-center gap-2">📈 Stamps Issued (Last 7 Days)</h3>
-                    <div className="h-64">
+                    <div className="h-64 min-h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={insightsData.stampsOverTime}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f3e6c2" />
@@ -895,7 +895,7 @@ export default function AdminDashboard() {
 
                 <div className="rounded-2xl bg-white shadow-md p-5 border border-[#f3dfb1]">
                     <h3 className="text-sm font-bold text-[#3b1512] mb-4 flex items-center gap-2">🎁 Rewards Earned (Monthly)</h3>
-                    <div className="h-64">
+                    <div className="h-64 min-h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={insightsData.rewardsPerMonth}>
                         <CartesianGrid stroke="#f3e6c2" />

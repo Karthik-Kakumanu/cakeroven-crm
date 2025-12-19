@@ -81,6 +81,11 @@ app.get("/api/admin/customers", adminController.getCustomers);
 app.post("/api/admin/stamp", adminController.addStamp);
 app.post("/api/admin/reset", adminController.resetStamps);
 app.get("/api/admin/insights", adminController.getInsights);
+app.post(
+  "/api/admin/delete-transactions-by-date",
+  adminAuth,
+  adminController.deleteTransactionsByDate
+);
 
 
 /**
