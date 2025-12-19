@@ -53,7 +53,7 @@ exports.getCustomers = async (req, res) => {
              ) as stamp_history
       FROM users u
       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-      ORDER BY u.id ASC
+      ORDER BY CAST(SUBSTRING(u.member_code FROM 3) AS INTEGER) ASC
     `;
     const r = await db.query(q);
     return res.json({ customers: r.rows });
@@ -289,5 +289,56 @@ exports.getInsights = async (req, res) => {
   } catch (err) {
     console.error("getInsights error:", err);
     res.status(500).json({ message: "Server error fetching insights" });
+  }
+};
+
+// --- DELETE TRANSACTIONS BY DATE (PASSWORD PROTECTED) ---
+exports.deleteTransactionsByDate = async (req, res) => {
+  try {
+    const { date, password } = req.body;
+    const adminId = req.admin.uid;
+
+    if (!date || !password) {
+      return res.status(400).json({ message: "Date and password required" });
+    }
+
+    // 1️⃣ Get admin password hash
+    const adminRes = await db.query(
+      "SELECT delete_password_hash FROM admin_users WHERE id = $1",
+      [adminId]
+    );
+
+    if (!adminRes.rows.length || !adminRes.rows[0].delete_password_hash) {
+      return res.status(403).json({ message: "Delete password not configured" });
+    }
+
+    const isValid = await bcrypt.compare(
+      password,
+      adminRes.rows[0].delete_password_hash
+    );
+
+    if (!isValid) {
+      return res.status(401).json({ message: "Invalid delete password" });
+    }
+
+    // 2️⃣ Delete ONLY that day's transactions
+    const del = await db.query(
+      `
+      DELETE FROM transactions
+      WHERE DATE(created_at AT TIME ZONE 'Asia/Kolkata') = $1
+      RETURNING id
+      `,
+      [date]
+    );
+
+    return res.json({
+      success: true,
+      deletedCount: del.rowCount,
+      message: `Deleted ${del.rowCount} transactions for ${date}`,
+    });
+
+  } catch (err) {
+    console.error("Delete by date error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

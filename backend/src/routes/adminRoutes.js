@@ -15,4 +15,12 @@ router.get("/rewards/:memberCode", adminAuth, adminController.getRewardHistoryFo
 // NEW: insights endpoint
 router.get("/insights", adminAuth, adminController.getInsights);
 
+
+router.post(
+  "/delete-transactions-by-date",
+  adminAuth,
+  adminController.deleteTransactionsByDate
+);
+
+
 module.exports = router;

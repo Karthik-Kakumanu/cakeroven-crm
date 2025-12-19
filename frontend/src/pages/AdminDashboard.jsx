@@ -1,6 +1,7 @@
 // frontend/src/pages/AdminDashboard.jsx
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { FiTrash2 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiSearch, FiPlusCircle, FiGift, FiLogOut, FiTrendingUp, FiUsers } from "react-icons/fi";
 import {
@@ -27,7 +28,7 @@ import { API_BASE } from "../apiConfig";
  * - Insights page with two charts (stamps over time, rewards per month)
  * - Automatic sound notification for stamp additions
  * - ✅ NEW: Manual Amount Entry per customer
- * - ✅ NEW: Transaction History Table (Grouped by Date, >1000 only)
+ * - ✅ NEW: Transaction History Table (Grouped by Date, >1000 only, Box Layout)
  * - ✅ NEW: Separate DOB Column in Table
  */
 
@@ -63,11 +64,11 @@ export default function AdminDashboard() {
     stampsOverTime: [], 
     rewardsPerMonth: [], 
   });
-  const [transactions, setTransactions] = useState([]); // ✅ NEW: Store transaction list
+  const [transactions, setTransactions] = useState([]); // Store raw transactions
   const [insightsLoading, setInsightsLoading] = useState(false);
 
   // Manual Amount Inputs
-  const [manualAmounts, setManualAmounts] = useState({}); // ✅ NEW: { userId: amount }
+  const [manualAmounts, setManualAmounts] = useState({}); // { userId: amount }
 
   const pollRef = useRef(null);
   const rewardAudioRef = useRef(null);
@@ -307,12 +308,12 @@ export default function AdminDashboard() {
     return Object.values(rh);
   };
 
-  // ✅ UPDATED: Handle Amount Change for Manual Entry
+  // ✅ Handle Amount Change for Manual Entry
   const handleAmountChange = (userId, value) => {
     setManualAmounts(prev => ({ ...prev, [userId]: value }));
   };
 
-  // ✅ UPDATED: Add Manual Stamp with Amount
+  // ✅ Add Manual Stamp with Amount
   const handleAddStampWithAmount = async (customer) => {
     if (!token) return;
     const userId = customer.id;
@@ -499,6 +500,42 @@ export default function AdminDashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customers]);
+
+  const handleDeleteDay = async (dateLabel) => {
+  const password = window.prompt(
+    `Enter delete password to remove ALL transactions of ${dateLabel}`
+  );
+
+  if (!password) return;
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/admin/delete-transactions-by-date`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          date: dateLabel,
+          password,
+        }),
+      }
+    );
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert(data.message);
+      fetchInsights(); // refresh UI
+    } else {
+      alert(data.message || "Delete failed");
+    }
+  } catch (err) {
+    alert("Server error");
+  }
+};
 
   // CSV export
   const exportCSV = (rows, filename = "cakeroven_customers.csv") => {
@@ -735,7 +772,7 @@ export default function AdminDashboard() {
                                     <td className="px-4 py-4 text-xs text-[#6b3a35]/60">{idx + 1}</td>
                                     <td className="px-4 py-4">
                                         <div className="font-bold text-[#3b1512]">{c.name}</div>
-                                        <div className="font-mono text-xs text--[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
+                                        <div className="font-mono text-xs text-[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
                                     </td>
                                     <td className="px-4 py-4 text-gray-600">
                                         <div>{c.phone}</div>
@@ -891,12 +928,24 @@ export default function AdminDashboard() {
                         {groupedTransactions.map((group, idx) => (
                             <div key={idx} className="border border-amber-200 rounded-xl overflow-hidden shadow-sm">
                                 {/* Header: Date + Total */}
-                                <div className="bg-amber-100 p-3 flex justify-between items-center border-b border-amber-200">
-                                    <span className="font-bold text-amber-900">{group.date}</span>
-                                    <span className="bg-white px-3 py-1 rounded-lg text-sm font-bold text-amber-800 shadow-sm">
-                                        Total: ₹{group.total.toFixed(2)}
-                                    </span>
-                                </div>
+                                <div className="bg-amber-100 p-3 flex justify-between items-center">
+                                  <span className="font-bold text-amber-900">{group.date}</span>
+
+  <div className="flex items-center gap-3">
+    <span className="bg-white px-3 py-1 rounded-lg text-sm font-bold text-amber-800">
+      Total: ₹{group.total.toFixed(2)}
+    </span>
+
+    <button
+      onClick={() => handleDeleteDay(group.date)}
+      className="text-red-600 hover:text-red-800"
+      title="Delete this day's transactions"
+    >
+      <FiTrash2 size={18} />
+    </button>
+  </div>
+</div>
+
                                 {/* Boxes Container (Side by Side) */}
                                 <div className="p-3 bg-white flex flex-wrap gap-3">
                                     {group.items.map(tx => (
