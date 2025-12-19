@@ -16,6 +16,9 @@ const adminController = require("./controllers/adminController");
 const app = express();
 const port = process.env.PORT || 4000;
 
+const adminAuth = require("./middleware/adminAuth");
+
+
 // Trust proxy when behind a reverse proxy (Render, Railway, etc.)
 if (process.env.TRUST_PROXY === "true" || process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
