@@ -2,6 +2,8 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+// ✅ FIXED: Added missing icon imports here
+import { FiSearch, FiPlusCircle, FiGift, FiLogOut, FiTrendingUp, FiUsers } from "react-icons/fi";
 import {
   LineChart,
   Line,
@@ -157,7 +159,7 @@ export default function AdminDashboard() {
       }
       if (!opts.silence) setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/admin/search?query=all`, { // Updated to use search endpoint to get all or fallback
+        const res = await fetch(`${API_BASE}/api/admin/search?query=all`, { 
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -217,7 +219,6 @@ export default function AdminDashboard() {
         setTransactions(data); // Store raw transactions
 
         // Process data for charts (Simple aggregation)
-        // Group stamps by date from transaction list where stamp_added = true
         const stampMap = {};
         data.forEach(t => {
             if (t.stamp_added) {
@@ -227,7 +228,6 @@ export default function AdminDashboard() {
         });
         const chartData = Object.keys(stampMap).map(date => ({ date, stamps: stampMap[date] }));
         
-        // Update charts only if we have data, else rely on fallback logic below
         if(chartData.length > 0) {
             setInsightsData(prev => ({ ...prev, stampsOverTime: chartData }));
         }
@@ -310,7 +310,7 @@ export default function AdminDashboard() {
 
     setAddingFor(customer.member_code); // Show loading
     try {
-      const res = await fetch(`${API_BASE}/api/admin/stamp`, { // Calls the new amount-aware endpoint
+      const res = await fetch(`${API_BASE}/api/admin/stamp`, { 
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ userId, amount: Number(amount) }),
@@ -318,7 +318,7 @@ export default function AdminDashboard() {
       const data = await res.json();
       
       if (res.ok) {
-        alert(data.message); // "Amount verified. Stamp added!" or "Transaction saved"
+        alert(data.message); 
         
         // Update local state
         setCustomers((prev) =>
@@ -400,7 +400,6 @@ export default function AdminDashboard() {
   // Generate minimal insights if backend didn't provide data (fallback)
   useEffect(() => {
     if ((insightsData.stampsOverTime || []).length === 0) {
-      // build a small synthetic sample using customers and session history
       const now = new Date();
       const arr = [];
       for (let i = 6; i >= 0; i--) {
@@ -408,12 +407,16 @@ export default function AdminDashboard() {
         d.setDate(now.getDate() - i);
         const label = d.toLocaleDateString("en-GB");
         let stampsToday = 0;
-        // Simple fallback counting
+        customers.forEach((c) => {
+          const sh = c.stamp_history;
+          if (Array.isArray(sh)) {
+            stampsToday += sh.filter((s) => new Date(s.date).toDateString() === d.toDateString()).length;
+          }
+        });
         arr.push({ date: label, stamps: stampsToday });
       }
       setInsightsData((s) => ({ ...s, stampsOverTime: arr }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customers]);
 
   // CSV export
@@ -543,10 +546,8 @@ export default function AdminDashboard() {
     );
   };
 
-  // Small inline styles & variants for animations
   const fadeInUp = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: 6 } };
 
-  // If not logged in, redirect (render null)
   if (!token) return null;
 
   return (
@@ -702,7 +703,7 @@ export default function AdminDashboard() {
                                     {renderStampRowCompact(c.member_code, Number(c.current_stamps || 0))}
                                 </td>
                                 
-                                {/* ✅ NEW: Manual Transaction Column */}
+                                {/* ✅ Manual Transaction Column */}
                                 <td className="px-4 py-4">
                                     {!isRedeemReady ? (
                                         <div className="flex gap-2 items-center">
@@ -789,7 +790,7 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
-            {/* ✅ NEW: Transaction History Table */}
+            {/* ✅ Transaction History Table */}
             <div className="rounded-2xl bg-white shadow-xl border border-[#f3dfb1] overflow-hidden">
                 <div className="px-6 py-4 bg-[#fffaf0] border-b border-[#f3dfb1] flex justify-between items-center">
                     <h3 className="text-lg font-bold text-[#3b1512] flex items-center gap-2">
@@ -828,7 +829,7 @@ export default function AdminDashboard() {
 
       </main>
 
-      {/* Celebration toast */}
+      {/* Celebration toast - auto-dismiss 2s (AnimatePresence + motion) */}
       <div className="fixed bottom-6 right-6 z-50 pointer-events-none">
         <AnimatePresence>
           {celebration && (
