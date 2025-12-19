@@ -1,7 +1,7 @@
 const db = require("../config/db");
-const Razorpay = require("razorpay"); // ✅ IMPORT RAZORPAY
+const Razorpay = require("razorpay");
 
-// ✅ INITIALIZE RAZORPAY
+// Initialize Razorpay
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -17,7 +17,7 @@ exports.registerCustomer = async (req, res) => {
 
   try {
     const result = await db.withClient(async (client) => {
-      // 1. Check if phone exists (Ignore spaces)
+      // 1. Check if phone exists
       const ex = await client.query("SELECT id FROM users WHERE TRIM(phone) = $1 LIMIT 1", [trimmedPhone]);
       if (ex.rows.length > 0) {
         return { status: 409, body: { message: "Phone number already exists. Please Login." } };
@@ -109,7 +109,7 @@ exports.loginByPhone = async (req, res) => {
   }
 };
 
-// --- Get Card ---
+// --- Get Card (Updated to Fetch History) ---
 exports.getCard = async (req, res) => {
   try {
     const { memberCode } = req.params;
@@ -117,38 +117,50 @@ exports.getCard = async (req, res) => {
 
     if (!memberCode || !phone) return res.status(400).json({ message: "Data missing" });
 
-    const cardRes = await db.query(
-      `SELECT u.member_code, u.name, u.phone, 
-              COALESCE(l.current_stamps, 0) as current_stamps, 
-              COALESCE(l.total_rewards, 0) as total_rewards
-       FROM users u
-       LEFT JOIN loyalty_accounts l ON l.user_id = u.id
-       WHERE u.member_code = $1 AND TRIM(u.phone) = $2`,
-      [memberCode, phone]
-    );
+    const result = await db.withClient(async (client) => {
+      // 1. Fetch User & Account
+      const cardRes = await client.query(
+        `SELECT u.id, u.member_code, u.name, u.phone, 
+                COALESCE(l.current_stamps, 0) as current_stamps, 
+                COALESCE(l.total_rewards, 0) as total_rewards
+         FROM users u
+         LEFT JOIN loyalty_accounts l ON l.user_id = u.id
+         WHERE u.member_code = $1 AND TRIM(u.phone) = $2`,
+        [memberCode, phone]
+      );
 
-    if (cardRes.rows.length === 0) {
-      return res.status(404).json({ message: "Card not found" });
-    }
+      if (cardRes.rows.length === 0) return null;
+      const row = cardRes.rows[0];
 
-    const row = cardRes.rows[0];
+      // 2. Fetch History (Added Amount Column)
+      const historyRes = await client.query(
+        `SELECT stamp_index, amount, created_at 
+         FROM stamps_history 
+         WHERE user_id = $1 
+         ORDER BY stamp_index ASC`,
+        [row.id]
+      );
 
-    return res.json({
-      card: {
+      return {
         memberCode: row.member_code,
         name: row.name,
         phone: row.phone,
         currentStamps: Number(row.current_stamps),
         totalRewards: Number(row.total_rewards),
-      },
+        history: historyRes.rows // ✅ Send History to Frontend
+      };
     });
+
+    if (!result) return res.status(404).json({ message: "Card not found" });
+    return res.json({ card: result });
+
   } catch (error) {
     console.error("GetCard Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };
 
-// --- ✅ NEW: Create Order (The Missing Logic) ---
+// --- Create Order (Razorpay) ---
 exports.createOrder = async (req, res) => {
   try {
     const { amount } = req.body;
@@ -175,7 +187,7 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// --- Add Online Stamp ---
+// --- Add Online Stamp (Updated with Reset Logic & Amount) ---
 exports.addOnlineStamp = async (req, res) => {
   const { memberCode, amount } = req.body;
 
@@ -185,10 +197,12 @@ exports.addOnlineStamp = async (req, res) => {
 
   try {
     const result = await db.withClient(async (client) => {
+      // 1. Get User
       const uRes = await client.query("SELECT id, member_code, name, phone FROM users WHERE member_code = $1 FOR UPDATE", [memberCode]);
       if (uRes.rows.length === 0) throw { status: 404, message: "User not found" };
       const user = uRes.rows[0];
 
+      // 2. Get Loyalty Info
       const lRes = await client.query("SELECT current_stamps, total_rewards FROM loyalty_accounts WHERE user_id = $1 FOR UPDATE", [user.id]);
       
       let currentStamps = 0;
@@ -201,40 +215,63 @@ exports.addOnlineStamp = async (req, res) => {
         await client.query("INSERT INTO loyalty_accounts (user_id, current_stamps, total_rewards) VALUES ($1,0,0)", [user.id]);
       }
 
+      // Check: Amount < 1000
       if (amount < 1000) {
+        // Fetch current history to return updated state
+        const hRes = await client.query("SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", [user.id]);
         return {
           status: 200,
           body: {
             message: "Payment success (No Stamp < 1000)",
-            card: { ...user, currentStamps, totalRewards },
+            card: { ...user, currentStamps, totalRewards, history: hRes.rows },
             stampAdded: false,
             reason: "low_amount"
           }
         };
       }
 
+      // Check: Max Stamps (12th is manual)
       if (currentStamps >= 11) {
+        const hRes = await client.query("SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", [user.id]);
         return {
           status: 200,
           body: {
             message: "Payment success (12th stamp is manual)",
-            card: { ...user, currentStamps, totalRewards },
+            card: { ...user, currentStamps, totalRewards, history: hRes.rows },
             stampAdded: false,
             reason: "limit_reached"
           }
         };
       }
 
+      // ✅ LOGIC: Add Stamp & Reset History for this slot
+      // If user had 11 stamps and reset, next is stamp 1.
+      // We delete the OLD stamp 1 data and insert the NEW stamp 1 data.
       const newStamps = currentStamps + 1;
+      
+      // Update Count
       await client.query("UPDATE loyalty_accounts SET current_stamps = $1, updated_at = NOW() WHERE user_id = $2", [newStamps, user.id]);
+      
+      // Delete old history for this specific stamp index (Auto-Loop/Reset logic)
       await client.query("DELETE FROM stamps_history WHERE user_id = $1 AND stamp_index = $2", [user.id, newStamps]);
-      await client.query("INSERT INTO stamps_history (user_id, stamp_index, created_at) VALUES ($1, $2, NOW())", [user.id, newStamps]);
+      
+      // Insert new history with AMOUNT
+      await client.query(
+        "INSERT INTO stamps_history (user_id, stamp_index, amount, created_at) VALUES ($1, $2, $3, NOW())", 
+        [user.id, newStamps, amount]
+      );
+
+      // Fetch Updated History for Frontend
+      const historyRes = await client.query(
+        "SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", 
+        [user.id]
+      );
 
       return {
         status: 200,
         body: {
           message: "Stamp added!",
-          card: { ...user, currentStamps: newStamps, totalRewards },
+          card: { ...user, currentStamps: newStamps, totalRewards, history: historyRes.rows },
           stampAdded: true,
           reason: "success"
         }
