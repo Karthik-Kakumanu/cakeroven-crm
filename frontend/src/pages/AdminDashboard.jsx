@@ -185,7 +185,7 @@ export default function AdminDashboard() {
             navigate("/admin");
             return;
           }
-          console.error("Failed loading customers:", data);
+          console.error("Failed loading customers");
           alert("Failed to load customers");
           return;
         }
@@ -207,11 +207,11 @@ export default function AdminDashboard() {
         setCustomers(items);
 
         // Optionally update insights data if returned from backend
-        if (Array.isArray(data.stamps_over_time)) {
-          setInsightsData((s) => ({ ...s, stampsOverTime: data.stamps_over_time }));
+        if (Array.isArray(rawData.stamps_over_time)) {
+          setInsightsData((s) => ({ ...s, stampsOverTime: rawData.stamps_over_time }));
         }
-        if (Array.isArray(data.rewards_per_month)) {
-          setInsightsData((s) => ({ ...s, rewardsPerMonth: data.rewards_per_month }));
+        if (Array.isArray(rawData.rewards_per_month)) {
+          setInsightsData((s) => ({ ...s, rewardsPerMonth: rawData.rewards_per_month }));
         }
       } catch (err) {
         console.error("fetchCustomers error:", err);
