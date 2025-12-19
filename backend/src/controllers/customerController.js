@@ -187,7 +187,7 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// --- Add Online Stamp (Updated with Transactions Table Logic) ---
+// --- Add Online Stamp (Updated with Strict Logic & Transactions Table) ---
 exports.addOnlineStamp = async (req, res) => {
   const { memberCode, amount } = req.body;
 
@@ -224,10 +224,14 @@ exports.addOnlineStamp = async (req, res) => {
       // 3. Logic Checks
       if (numAmount < 1000) {
         reason = "low_amount";
-        // Money collected, but NO stamp given
+        // Money collected (<1000), but NO stamp given
+        // Per requirement: DO NOT log transaction if < 1000
       } else if (currentStamps >= 11) {
         reason = "limit_reached";
         // Money collected, but NO stamp given (User needs to redeem)
+        // Per requirement: Usually log, but strict logic says only if stamp added?
+        // Let's assume we log if >= 1000 regardless of limit, OR follow strict rule:
+        // "For transaction which the stamp availed only should be seen" -> Only log if stamp added.
       } else {
         // Condition Met: Add Stamp
         stampAdded = true;
@@ -239,13 +243,15 @@ exports.addOnlineStamp = async (req, res) => {
         await client.query("INSERT INTO stamps_history (user_id, stamp_index, amount, created_at) VALUES ($1, $2, $3, NOW())", [user.id, newStamps, numAmount]);
       }
 
-      // 4. ✅ INSERT TRANSACTION RECORD
-      // We insert into the 'transactions' table regardless of stamp outcome so Admin sees the money.
-      await client.query(
-        `INSERT INTO transactions (user_id, member_code, customer_name, amount, payment_method, stamp_added, created_at)
-         VALUES ($1, $2, $3, $4, 'online', $5, NOW())`,
-        [user.id, user.member_code, user.name, numAmount, stampAdded]
-      );
+      // 4. ✅ STRICT TRANSACTION LOGGING
+      // Only insert into 'transactions' if a stamp was actually added (meaning amount >= 1000 AND limit not reached)
+      if (stampAdded) {
+        await client.query(
+          `INSERT INTO transactions (user_id, member_code, customer_name, amount, payment_method, stamp_added, created_at)
+           VALUES ($1, $2, $3, $4, 'online', $5, NOW())`,
+          [user.id, user.member_code, user.name, numAmount, stampAdded]
+        );
+      }
 
       // 5. Fetch Updated History for Card Response
       const historyRes = await client.query("SELECT stamp_index, amount, created_at FROM stamps_history WHERE user_id = $1 ORDER BY stamp_index ASC", [user.id]);

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { FiSearch, FiPlusCircle, FiGift, FiLogOut, FiTrendingUp, FiUsers } from "react-icons/fi";
 import {
   LineChart,
   Line,
@@ -26,7 +27,7 @@ import { API_BASE } from "../apiConfig";
  * - Insights page with two charts (stamps over time, rewards per month)
  * - Automatic sound notification for stamp additions
  * - ✅ NEW: Manual Amount Entry per customer
- * - ✅ NEW: Transaction History Table with Daily Totals
+ * - ✅ NEW: Transaction History Table (Grouped by Date, >1000 only)
  */
 
 const POLL_INTERVAL = 20_000;
@@ -81,13 +82,15 @@ export default function AdminDashboard() {
     let totalStamps = 0;
     let totalRewards = 0;
     const birthdaysToday = [];
+    const almostThere = []; // 9 to 11 stamps
 
     const now = new Date();
     const d = now.getDate();
     const m = now.getMonth();
 
     customers.forEach((c) => {
-      totalStamps += Number(c.current_stamps || 0);
+      const s = Number(c.current_stamps || 0);
+      totalStamps += s;
       totalRewards += Number(c.total_rewards || 0);
       if (c.dob) {
         const dob = new Date(c.dob);
@@ -95,9 +98,13 @@ export default function AdminDashboard() {
           birthdaysToday.push(c);
         }
       }
+      // Populate "Almost at Reward"
+      if (s >= 9 && s < 12) {
+        almostThere.push(c);
+      }
     });
 
-    return { totalUsers, totalStamps, totalRewards, birthdaysToday };
+    return { totalUsers, totalStamps, totalRewards, birthdaysToday, almostThere };
   }, [customers]);
 
   // Date formatter strictly for IST (Indian Standard Time)
@@ -157,12 +164,19 @@ export default function AdminDashboard() {
       }
       if (!opts.silence) setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/admin/customers`, {
+        const res = await fetch(`${API_BASE}/api/admin/search?query=all`, { 
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = (await res.json().catch(() => ({}))) || {};
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
+        
+        // Fallback to specific customers endpoint if search "all" isn't implemented strictly
+        const res2 = res.ok ? res : await fetch(`${API_BASE}/api/admin/customers`, { headers: { Authorization: `Bearer ${token}` } });
+        
+        const rawData = (await res2.json().catch(() => ([])));
+        // Handle array response (search) or object response (getCustomers)
+        const itemsList = Array.isArray(rawData) ? rawData : (rawData.customers || []);
+
+        if (!res2.ok && !res.ok) {
+          if (res2.status === 401 || res2.status === 403) {
             alert("Session expired. Please login again.");
             localStorage.removeItem("cr_adminToken");
             localStorage.removeItem("cr_adminUsername");
@@ -175,7 +189,7 @@ export default function AdminDashboard() {
         }
 
         // Normalize data
-        const items = (data.customers || []).map((c) => ({
+        const items = itemsList.map((c) => ({
           id: c.id,
           member_code: c.member_code ?? c.memberCode ?? c.memberId,
           name: c.name ?? c.full_name ?? "",
@@ -514,71 +528,24 @@ export default function AdminDashboard() {
     URL.revokeObjectURL(url);
   };
 
-  // ✅ NEW: Render Transaction History Rows with Daily Totals
-  const renderInsightRows = () => {
-    if (transactions.length === 0) return <tr><td colSpan="6" className="p-4 text-center opacity-50">No transactions found.</td></tr>;
-
-    const rows = [];
-    let currentDayTotal = 0;
-
-    for (let i = 0; i < transactions.length; i++) {
-        const tx = transactions[i];
-        const { dateStr, timeStr, rawDate } = formatDateTime(tx.created_at);
+  // ✅ NEW: Group Transactions by Day and Filter (< 1000 ignored)
+  const groupedTransactions = useMemo(() => {
+    const groups = {};
+    transactions.forEach(tx => {
         const amount = Number(tx.amount);
-        
-        currentDayTotal += amount;
-
-        // Transaction Row
-        rows.push(
-            <tr key={tx.id} className="border-b border-amber-900/10 hover:bg-white/50 transition text-sm">
-                <td className="p-3">
-                    <div className="font-semibold text-amber-900">{dateStr}</div>
-                    <div className="text-xs text-amber-900/50">{timeStr}</div>
-                </td>
-                <td className="p-3 font-mono text-amber-800">{tx.member_code}</td>
-                <td className="p-3 font-medium">{tx.customer_name}</td>
-                <td className="p-3 font-bold text-amber-700">₹{amount.toFixed(2)}</td>
-                <td className="p-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${tx.payment_method === 'online' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
-                        {tx.payment_method}
-                    </span>
-                </td>
-                <td className="p-3 text-center">
-                    {tx.stamp_added ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">-</span>}
-                </td>
-            </tr>
-        );
-
-        // Calculate if we need a total row (if date changes or last item)
-        let insertTotal = false;
-        if (i === transactions.length - 1) {
-            insertTotal = true;
-        } else {
-            const nextDate = new Date(transactions[i+1].created_at);
-            if (rawDate.getDate() !== nextDate.getDate() || 
-                rawDate.getMonth() !== nextDate.getMonth() || 
-                rawDate.getFullYear() !== nextDate.getFullYear()) {
-                insertTotal = true;
-            }
+        // FILTER: Only show transactions >= 1000 AND where stamp was added
+        if (amount >= 1000 && tx.stamp_added) {
+            const dateKey = new Date(tx.created_at).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' });
+            if (!groups[dateKey]) groups[dateKey] = { date: dateKey, items: [], total: 0 };
+            groups[dateKey].items.push(tx);
+            groups[dateKey].total += amount;
         }
-
-        if (insertTotal) {
-            rows.push(
-                <tr key={`total-${i}`} className="bg-amber-200/40 border-b-2 border-amber-900/20">
-                    <td colSpan="3" className="p-3 text-right font-bold text-amber-900 uppercase text-xs tracking-wider">
-                        Total Collected ({dateStr}):
-                    </td>
-                    <td className="p-3 font-extrabold text-amber-800 text-lg">
-                        ₹{currentDayTotal.toFixed(2)}
-                    </td>
-                    <td colSpan="2"></td>
-                </tr>
-            );
-            currentDayTotal = 0; // Reset
-        }
-    }
-    return rows;
-  };
+    });
+    // Sort groups by date descending (rough approximation by string)
+    // Ideally sort by raw timestamp if available, but object keys are unordered.
+    // We'll rely on the backend sort and just process in order.
+    return Object.values(groups);
+  }, [transactions]);
 
   // Compact 12 stamps row renderer (Visual only now, actions moved to manual column)
   const renderStampRowCompact = (memberCode, current) => {
@@ -608,7 +575,7 @@ export default function AdminDashboard() {
       );
     }
     return (
-      <div className="flex gap-2 items-center overflow-x-auto py-1">
+      <div className="flex gap-2 items-center overflow-x-auto py-1 custom-scrollbar">
         {boxes}
       </div>
     );
@@ -654,8 +621,8 @@ export default function AdminDashboard() {
               </button>
             </nav>
 
-            <button onClick={handleLogout} className="px-4 py-2 rounded-full bg-[#501914] text-[#f5e6c8] text-sm font-semibold shadow hover:bg-[#40100f]">
-              Logout
+            <button onClick={handleLogout} className="text-[#3b1512] hover:text-red-700 transition" title="Logout">
+              <FiLogOut size={20} />
             </button>
           </div>
         </div>
@@ -672,7 +639,7 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="rounded-2xl bg-white shadow-sm p-4 border border-[#f3dfb1]">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 rounded-lg text-blue-600">📊</div>
+                    <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><FiUsers /></div>
                     <div>
                         <p className="text-xs text-[#6b3a35] uppercase tracking-wide">Total Users</p>
                         <p className="text-2xl font-bold mt-0.5">{stats.totalUsers}</p>
@@ -681,7 +648,7 @@ export default function AdminDashboard() {
               </div>
               <div className="rounded-2xl bg-white shadow-sm p-4 border border-[#f3dfb1]">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">🎫</div>
+                    <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600"><FiPlusCircle /></div>
                     <div>
                         <p className="text-xs text-[#6b3a35] uppercase tracking-wide">Stamps Given</p>
                         <p className="text-2xl font-bold mt-0.5">{stats.totalStamps}</p>
@@ -690,7 +657,7 @@ export default function AdminDashboard() {
               </div>
               <div className="rounded-2xl bg-white shadow-sm p-4 border border-[#f3dfb1]">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-50 rounded-lg text-purple-600">🎁</div>
+                    <div className="p-2 bg-purple-50 rounded-lg text-purple-600"><FiGift /></div>
                     <div>
                         <p className="text-xs text-[#6b3a35] uppercase tracking-wide">Rewards Unlocked</p>
                         <p className="text-2xl font-bold mt-0.5">{stats.totalRewards}</p>
@@ -708,116 +675,137 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Customers Table */}
-            <div className="rounded-3xl bg-white shadow-xl border border-[#f3dfb1] overflow-hidden">
-              <div className="px-6 py-5 border-b border-[#f3dfb1] flex flex-col md:flex-row items-center justify-between gap-4 bg-[#fffaf0]">
-                <div>
-                  <h3 className="text-xl font-bold text-[#3b1512]">Manage Customers</h3>
-                  <p className="text-xs text-[#6b3a35]/70">Enter amount to manually add stamp/transaction.</p>
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* Customers Table (3 cols) */}
+                <div className="lg:col-span-3 rounded-3xl bg-white shadow-xl border border-[#f3dfb1] overflow-hidden">
+                <div className="px-6 py-5 border-b border-[#f3dfb1] flex flex-col md:flex-row items-center justify-between gap-4 bg-[#fffaf0]">
+                    <div>
+                    <h3 className="text-xl font-bold text-[#3b1512]">Manage Customers</h3>
+                    <p className="text-xs text-[#6b3a35]/70">Enter amount to manually add stamp/transaction.</p>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative w-full md:w-72">
+                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search name / phone / ID..."
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#ecdaba] bg-white text-sm outline-none focus:ring-2 focus:ring-[#f1cf8f]/50"
+                        />
+                    </div>
+                    <button onClick={() => exportCSV(customers)} className="px-4 py-2.5 text-sm rounded-xl bg-[#501914] text-[#f5e6c8] hover:bg-[#3a0f0b] font-medium transition">
+                        Export
+                    </button>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                  <div className="relative w-full md:w-72">
-                    <input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search name / phone / ID..."
-                      className="w-full pl-4 pr-4 py-2.5 rounded-xl border border-[#ecdaba] bg-white text-sm outline-none focus:ring-2 focus:ring-[#f1cf8f]/50"
-                    />
-                  </div>
-                  <button onClick={() => exportCSV(customers)} className="px-4 py-2.5 text-sm rounded-xl bg-[#501914] text-[#f5e6c8] hover:bg-[#3a0f0b] font-medium transition">
-                    Export
-                  </button>
-                </div>
-              </div>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                    <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wider font-semibold">
+                        <tr>
+                        <th className="px-4 py-4 text-left w-12">#</th>
+                        <th className="px-4 py-4 text-left">Member</th>
+                        <th className="px-4 py-4 text-left">Contact</th>
+                        <th className="px-4 py-4 text-left w-[40%]">Current Progress</th>
+                        <th className="px-4 py-4 text-left w-48">Manual Transaction</th>
+                        <th className="px-4 py-4 text-center w-24">Rewards</th>
+                        </tr>
+                    </thead>
 
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wider font-semibold">
-                    <tr>
-                      <th className="px-4 py-4 text-left w-12">#</th>
-                      <th className="px-4 py-4 text-left">Member</th>
-                      <th className="px-4 py-4 text-left">Contact</th>
-                      <th className="px-4 py-4 text-left w-[40%]">Current Progress</th>
-                      <th className="px-4 py-4 text-left w-48">Manual Transaction</th>
-                      <th className="px-4 py-4 text-center w-24">Rewards</th>
-                    </tr>
-                  </thead>
+                    <tbody className="divide-y divide-[#f3dfb1]">
+                        {loading ? (
+                        <tr><td colSpan={6} className="px-6 py-10 text-center text-[#6b3a35]">Loading customers...</td></tr>
+                        ) : customers.length === 0 ? (
+                        <tr><td colSpan={6} className="px-6 py-10 text-center text-[#6b3a35]/70">No customers found.</td></tr>
+                        ) : (
+                        customers
+                            .filter((c) => [c.name, c.phone, String(c.member_code)].join(" ").toLowerCase().includes(search.trim().toLowerCase()))
+                            .map((c, idx) => {
+                                const isRedeemReady = c.current_stamps >= 11;
+                                const amountVal = manualAmounts[c.id] || "";
+                                const isBusy = addingFor === c.member_code || removingFor === c.member_code;
 
-                  <tbody className="divide-y divide-[#f3dfb1]">
-                    {loading ? (
-                      <tr><td colSpan={6} className="px-6 py-10 text-center text-[#6b3a35]">Loading customers...</td></tr>
-                    ) : customers.length === 0 ? (
-                      <tr><td colSpan={6} className="px-6 py-10 text-center text-[#6b3a35]/70">No customers found.</td></tr>
-                    ) : (
-                      customers
-                        .filter((c) => [c.name, c.phone, String(c.member_code)].join(" ").toLowerCase().includes(search.trim().toLowerCase()))
-                        .map((c, idx) => {
-                            const isRedeemReady = c.current_stamps >= 11;
-                            const amountVal = manualAmounts[c.id] || "";
-                            const isBusy = addingFor === c.member_code || removingFor === c.member_code;
-
-                            return (
-                            <tr key={c.member_code} className="hover:bg-[#fff9ee] transition-colors">
-                                <td className="px-4 py-4 text-xs text-[#6b3a35]/60">{idx + 1}</td>
-                                <td className="px-4 py-4">
-                                    <div className="font-bold text-[#3b1512]">{c.name}</div>
-                                    <div className="font-mono text-xs text-[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
-                                </td>
-                                <td className="px-4 py-4 text-gray-600">
-                                    <div>{c.phone}</div>
-                                    <div className="text-xs text-gray-400">{c.dob ? new Date(c.dob).toLocaleDateString("en-GB") : "No DOB"}</div>
-                                </td>
-                                <td className="px-4 py-4">
-                                    {renderStampRowCompact(c.member_code, Number(c.current_stamps || 0))}
-                                </td>
-                                
-                                {/* ✅ NEW: Manual Transaction Column */}
-                                <td className="px-4 py-4">
-                                    {!isRedeemReady ? (
-                                        <div className="flex gap-2 items-center">
-                                            <div className="relative w-24">
-                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
-                                                <input 
-                                                    type="number" 
-                                                    placeholder="Amount"
-                                                    value={amountVal}
-                                                    onChange={(e) => handleAmountChange(c.id, e.target.value)}
-                                                    disabled={isBusy}
-                                                    className="w-full pl-5 pr-2 py-1.5 rounded-lg border border-gray-300 text-sm focus:border-amber-500 outline-none"
-                                                />
+                                return (
+                                <tr key={c.member_code} className="hover:bg-[#fff9ee] transition-colors">
+                                    <td className="px-4 py-4 text-xs text-[#6b3a35]/60">{idx + 1}</td>
+                                    <td className="px-4 py-4">
+                                        <div className="font-bold text-[#3b1512]">{c.name}</div>
+                                        <div className="font-mono text-xs text--[#6b3a35] bg-[#f0dcb4]/30 px-1.5 py-0.5 rounded inline-block mt-1">{c.member_code}</div>
+                                    </td>
+                                    <td className="px-4 py-4 text-gray-600">
+                                        <div>{c.phone}</div>
+                                        <div className="text-xs text-gray-400">{c.dob ? new Date(c.dob).toLocaleDateString("en-GB") : "No DOB"}</div>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        {renderStampRowCompact(c.member_code, Number(c.current_stamps || 0))}
+                                    </td>
+                                    
+                                    {/* ✅ NEW: Manual Transaction Column */}
+                                    <td className="px-4 py-4">
+                                        {!isRedeemReady ? (
+                                            <div className="flex gap-2 items-center">
+                                                <div className="relative w-24">
+                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="Amount"
+                                                        value={amountVal}
+                                                        onChange={(e) => handleAmountChange(c.id, e.target.value)}
+                                                        disabled={isBusy}
+                                                        className="w-full pl-5 pr-2 py-1.5 rounded-lg border border-gray-300 text-sm focus:border-amber-500 outline-none"
+                                                    />
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleAddStampWithAmount(c)}
+                                                    disabled={isBusy || !amountVal}
+                                                    className="bg-[#4b130f] text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase hover:bg-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {isBusy ? "..." : "Add"}
+                                                </button>
                                             </div>
+                                        ) : (
                                             <button 
-                                                onClick={() => handleAddStampWithAmount(c)}
-                                                disabled={isBusy || !amountVal}
-                                                className="bg-[#4b130f] text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase hover:bg-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                onClick={() => handleReset(c.id)}
+                                                disabled={isBusy}
+                                                className="w-full py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold uppercase shadow-sm hover:bg-green-700 animate-pulse"
                                             >
-                                                {isBusy ? "..." : "Add"}
+                                                Redeem & Reset
                                             </button>
-                                        </div>
-                                    ) : (
-                                        <button 
-                                            onClick={() => handleReset(c.id)}
-                                            disabled={isBusy}
-                                            className="w-full py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold uppercase shadow-sm hover:bg-green-700 animate-pulse"
-                                        >
-                                            Redeem & Reset
-                                        </button>
-                                    )}
-                                </td>
+                                        )}
+                                    </td>
 
-                                <td className="px-4 py-4 text-center">
-                                    <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-sm font-bold text-amber-800">
-                                        <span>🎁</span> {c.total_rewards}
-                                    </div>
-                                </td>
-                            </tr>
-                            );
-                        })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                                    <td className="px-4 py-4 text-center">
+                                        <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#fff4d8] border border-[#f1cf8f] text-sm font-bold text-amber-800">
+                                            <span>🎁</span> {c.total_rewards}
+                                        </div>
+                                    </td>
+                                </tr>
+                                );
+                            })
+                        )}
+                    </tbody>
+                    </table>
+                </div>
+                </div>
+
+                {/* Right Sidebar (1 col) */}
+                <div className="space-y-6">
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-amber-200">
+                        <h4 className="font-bold mb-3 flex items-center gap-2 text-amber-900">🎁 Almost at Reward</h4>
+                        <p className="text-xs text-gray-500 mb-2">Members with 9-11 stamps</p>
+                        {stats.almostThere.length === 0 ? <p className="text-xs text-gray-400 italic">No members currently close.</p> : (
+                            <ul className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                                {stats.almostThere.map(m => (
+                                    <li key={m.id} className="flex justify-between items-center bg-amber-50 p-2 rounded border border-amber-100">
+                                        <div><div className="text-xs font-bold text-amber-900">{m.member_code}</div><div className="text-[10px] text-gray-500">{m.name}</div></div>
+                                        <span className="text-xs font-bold bg-white px-2 py-0.5 rounded border border-amber-200">{m.current_stamps}/12</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </div>
             </div>
           </motion.div>
         )}
@@ -873,22 +861,41 @@ export default function AdminDashboard() {
                 {insightsLoading ? (
                     <div className="p-12 text-center text-gray-400">Loading transaction history...</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-[#501914] text-[#f5e6c8] text-xs uppercase tracking-wider">
-                                <tr>
-                                    <th className="p-4">Date & Time</th>
-                                    <th className="p-4">Member ID</th>
-                                    <th className="p-4">Customer Name</th>
-                                    <th className="p-4">Amount</th>
-                                    <th className="p-4">Method</th>
-                                    <th className="p-4 text-center">Stamp Added?</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#f3dfb1]">
-                                {renderInsightRows()}
-                            </tbody>
-                        </table>
+                    <div className="p-6 space-y-6">
+                        {/* Grouped Transactions List */}
+                        {groupedTransactions.map((group, idx) => (
+                            <div key={idx} className="border border-amber-200 rounded-xl overflow-hidden shadow-sm">
+                                {/* Header: Date + Total */}
+                                <div className="bg-amber-100 p-3 flex justify-between items-center border-b border-amber-200">
+                                    <span className="font-bold text-amber-900">{group.date}</span>
+                                    <span className="bg-white px-3 py-1 rounded-lg text-sm font-bold text-amber-800 shadow-sm">
+                                        Total: ₹{group.total.toFixed(2)}
+                                    </span>
+                                </div>
+                                {/* Boxes Container */}
+                                <div className="p-3 bg-white flex flex-wrap gap-3">
+                                    {group.items.map(tx => (
+                                        <div key={tx.id} className="bg-amber-50/50 border border-amber-100 rounded-lg px-3 py-2 flex items-center gap-3 min-w-[150px] shadow-sm hover:shadow-md transition">
+                                            <div>
+                                                <div className="text-[10px] text-gray-400 uppercase font-bold">ID</div>
+                                                <div className="text-xs font-mono font-bold text-amber-900">{tx.member_code}</div>
+                                            </div>
+                                            <div className="h-6 w-px bg-amber-200/50"></div>
+                                            <div>
+                                                <div className="text-[10px] text-gray-400 uppercase font-bold">Amt</div>
+                                                <div className="text-sm font-bold text-green-700">₹{Number(tx.amount)}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+
+                        {groupedTransactions.length === 0 && (
+                            <div className="text-center py-10 text-gray-400">
+                                No qualifying transactions found (Amount {'>'}= 1000).
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
