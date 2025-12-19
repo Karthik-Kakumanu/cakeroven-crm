@@ -74,9 +74,10 @@ app.post("/api/customer/create-order", customerController.createOrder);
 app.post("/api/customer/add-online-stamp", customerController.addOnlineStamp);
 
 // --- ADMIN ROUTES ---
-// ⚠️ FIXED: Used 'login' to match controller export
 app.post("/api/admin/login", adminController.login);
 app.get("/api/admin/search", adminController.searchCustomer);
+// ✅ FIXED: Added this missing route that was causing the 404 error
+app.get("/api/admin/customers", adminController.getCustomers); 
 app.post("/api/admin/stamp", adminController.addStamp);
 app.post("/api/admin/reset", adminController.resetStamps);
 app.get("/api/admin/insights", adminController.getInsights);

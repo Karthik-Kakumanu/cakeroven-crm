@@ -222,7 +222,6 @@ exports.addOnlineStamp = async (req, res) => {
       let newStamps = currentStamps;
 
       // 3. Logic Checks
-      // We do NOT return early here anymore. We must record the transaction first.
       if (numAmount < 1000) {
         reason = "low_amount";
         // Money collected, but NO stamp given
