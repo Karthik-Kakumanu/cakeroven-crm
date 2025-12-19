@@ -5,10 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 /**
- * Card.jsx (Final Version - Separated History Card)
- * - Main Card: Stamps & Payment.
- * - Second Card: Journey History (Below the main card).
- * - Logic: Fully integrated with Backend.
+ * Card.jsx (Final Version - Full Text Restored)
+ * - Main Card: Stamps, Payment, and ALL Rules/Instructions.
+ * - Second Card: Journey History (Separate box below).
+ * - Logic: Auto-detects Payment Keys, Handles History Table.
  */
 
 // --- Helpers ---
@@ -174,10 +174,8 @@ export default function Card() {
 
   const stamps = Number(card?.currentStamps ?? card?.current_stamps ?? 0);
   const rewards = Number(card?.totalRewards ?? card?.total_rewards ?? 0);
-  
-  // ✅ Get History Array safely
+  // Get history safely
   const history = Array.isArray(card?.history) ? card.history : [];
-  
   const isRewardReady = stamps >= 12;
 
   useEffect(() => {
@@ -509,13 +507,25 @@ export default function Card() {
             </div>
           </div>
 
+          {/* ✅ RESTORED ALL TEXT ✅ */}
           <div className="text-xs text-amber-100/75 space-y-2">
-            <p>Cash: Show at counter, Online: Pay above. <span className="font-semibold">₹1000+ = 1 stamp</span>.</p>
+            <p>
+              Cash: Show at counter, Online: Pay using the box above. <span className="font-semibold">₹1000 or more</span> earns <span className="font-semibold">1 stamp</span>.
+            </p>
+            <p>
+              On your 12th visit, enjoy up to ₹2000 worth of food FREE. If the bill exceeds ₹2000, only the balance amount is payable. Unused free value does not carry forward.
+            </p>
+            <p>
+              Only 1 bill = 1 stamp. No bill splitting allowed.
+            </p>
+
             <div className="flex items-center gap-2 mt-2">
               <button onClick={handleSwitchUser} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-100/20 text-xs hover:bg-amber-100/6 transition">Not you? Switch user</button> 
               {isRewardReady && <motion.button onClick={() => { setCelebrate(true); setTimeout(() => setCelebrate(false), 1200); }} className="ml-auto px-3 py-1.5 rounded-full bg-amber-100/10 border border-amber-100/30 text-xs">🎉 Claim Reward</motion.button>}
             </div>
-            <p>* Conditions apply on 25th Dec & 31st Dec.</p> 
+            <p>
+              * Conditions apply on 25th Dec & 31st Dec - 1st Jan.
+            </p> 
           </div>
 
           {/* Celebrate Overlay */}
