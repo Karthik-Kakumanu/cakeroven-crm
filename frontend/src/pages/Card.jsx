@@ -400,16 +400,16 @@ export default function Card() {
         ))}
       </div>
 
-     <div className="mb-4 rounded-xl border border-red-800/50 bg-red-900/40 px-4 py-3 text-xs text-red-100">
-  <p className="font-semibold flex items-center gap-2 text-red-200">
+      <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-xs text-[#7a2a1f]">
+  <p className="font-semibold flex items-center gap-2 text-[#8b2c1f]">
     ⚠️ Important Payment Notice
   </p>
-  <p className="mt-1 leading-relaxed text-red-100/90">
-    After completing payment, please <span className="font-semibold text-red-200">do not press Back</span>, 
-    <span className="font-semibold text-red-200"> do not refresh</span>, or 
-    <span className="font-semibold text-red-200"> close this page</span>.
+  <p className="mt-1 leading-relaxed text-[#7a2a1f]/90">
+    After completing payment, please <span className="font-semibold text-[#9b3a2c]">do not press Back</span>, 
+    <span className="font-semibold text-[#9b3a2c]"> do not refresh</span>, or 
+    <span className="font-semibold text-[#9b3a2c]"> close this page</span>.
   </p>
-  <p className="mt-1 leading-relaxed text-red-100/80">
+  <p className="mt-1 leading-relaxed text-[#6b241a]/80">
     Your payment will be securely verified and accepted by the website automatically.
   </p>
 </div>
