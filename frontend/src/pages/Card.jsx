@@ -423,6 +423,21 @@ export default function Card() {
               <p className="text-xs uppercase text-amber-100/60">Member ID</p>
               <p className="text-sm font-mono font-semibold mt-1">{memberCode}</p>
             </div>
+            {/* ⚠️ Payment Warning Message */}
+<div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-xs text-amber-100">
+  <p className="font-semibold flex items-center gap-2">
+    ⚠️ Important Payment Notice
+  </p>
+  <p className="mt-1 leading-relaxed text-amber-100/90">
+    After completing payment, please <span className="font-semibold">do not press Back</span>, 
+    <span className="font-semibold"> do not refresh</span>, or 
+    <span className="font-semibold"> close this page</span>.
+  </p>
+  <p className="mt-1 leading-relaxed text-amber-100/80">
+    Your payment will be securely verified and accepted by the website automatically.
+  </p>
+</div>
+
           </div>
 
           {/* User Info */}
@@ -496,6 +511,15 @@ export default function Card() {
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-100/50 font-sans">₹</span>
                 <input type="number" placeholder="Enter Amount" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} min="1" className="w-full pl-7 pr-3 py-2.5 rounded-xl bg-black/20 border border-amber-100/20 text-amber-100 placeholder-amber-100/20 focus:outline-none focus:border-amber-400/60 focus:bg-black/40 transition-all font-mono" />
               </div>
+
+              {/* ⚠️ Processing Warning (Only during payment) */}
+{isPaying && (
+  <div className="mb-2 w-full text-center text-[11px] font-semibold text-amber-300 animate-pulse">
+    ⏳ Payment is being processed…  
+    Please do not refresh, go back, or close this page.
+  </div>
+)}
+
               <motion.button whileTap={{ scale: 0.97 }} onClick={handlePayment} disabled={isPaying} className="relative px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 text-[#3d0f0b] font-bold text-sm shadow-lg shadow-amber-900/40 hover:brightness-110 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[120px]">
                 {isPaying ? <><div className="h-4 w-4 rounded-full border-2 border-[#3d0f0b]/30 border-t-[#3d0f0b] animate-spin" /><span>Wait...</span></> : "Pay Now"}
               </motion.button>
