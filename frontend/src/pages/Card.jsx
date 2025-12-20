@@ -400,7 +400,7 @@ export default function Card() {
         ))}
       </div>
 
-      <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-xs text-[#7a2a1f]">
+      <div className="mb-4 rounded-xl border border-amber-400/40 bg-[#f5e6c8] px-4 py-3 text-xs text-[#7a2a1f]">
   <p className="font-semibold flex items-center gap-2 text-[#8b2c1f]">
     ⚠️ Important Payment Notice
   </p>
@@ -413,6 +413,7 @@ export default function Card() {
     Your payment will be securely verified and accepted by the website automatically.
   </p>
 </div>
+
 
 
       <div className="w-full max-w-sm md:max-w-xl relative z-10 flex flex-col gap-6">
