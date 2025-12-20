@@ -400,6 +400,21 @@ export default function Card() {
         ))}
       </div>
 
+      {/* ⚠️ Payment Warning Message */}
+<div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-xs text-amber-100">
+  <p className="font-semibold flex items-center gap-2">
+    ⚠️ Important Payment Notice
+  </p>
+  <p className="mt-1 leading-relaxed text-amber-100/90">
+    After completing payment, please <span className="font-semibold">do not press Back</span>, 
+    <span className="font-semibold"> do not refresh</span>, or 
+    <span className="font-semibold"> close this page</span>.
+  </p>
+  <p className="mt-1 leading-relaxed text-amber-100/80">
+    Your payment will be securely verified and accepted by the website automatically.
+  </p>
+</div>
+
       <div className="w-full max-w-sm md:max-w-xl relative z-10 flex flex-col gap-6">
         
         {/* ======================================================== */}
@@ -423,21 +438,6 @@ export default function Card() {
               <p className="text-xs uppercase text-amber-100/60">Member ID</p>
               <p className="text-sm font-mono font-semibold mt-1">{memberCode}</p>
             </div>
-            {/* ⚠️ Payment Warning Message */}
-<div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-xs text-amber-100">
-  <p className="font-semibold flex items-center gap-2">
-    ⚠️ Important Payment Notice
-  </p>
-  <p className="mt-1 leading-relaxed text-amber-100/90">
-    After completing payment, please <span className="font-semibold">do not press Back</span>, 
-    <span className="font-semibold"> do not refresh</span>, or 
-    <span className="font-semibold"> close this page</span>.
-  </p>
-  <p className="mt-1 leading-relaxed text-amber-100/80">
-    Your payment will be securely verified and accepted by the website automatically.
-  </p>
-</div>
-
           </div>
 
           {/* User Info */}
