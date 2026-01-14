@@ -77,7 +77,7 @@ exports.searchCustomer = async (req, res) => {
      FROM users u
      LEFT JOIN loyalty_accounts l ON l.user_id = u.id
      ORDER BY CAST(SUBSTRING(u.member_code FROM 3) AS INTEGER) ASC
-     LIMIT 50`
+     LIMIT 1000`
   );
   return res.json(result.rows);
 }
