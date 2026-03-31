@@ -8,9 +8,9 @@ export default function TermsConditions() {
 
         <div className="stamp-box">
           <ul>
-            <li>Spend ₹1000 → Earn 1 Stamp</li>
+            <li>Spend ₹500 → Earn 1 Stamp</li>
             <li>Complete 11 Stamps → We Gift You the 12th</li>
-            <li>On 12th Stamp → ₹2000 Food Reward</li>
+            <li>On 12th Stamp → ₹1000 Food Reward</li>
             <li>Scan & Collect — No App, No Login</li>
             <li>Birthday = Bonus Treat 🎂</li>
           </ul>

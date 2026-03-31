@@ -2,15 +2,32 @@
 const { Pool } = require("pg");
 
 const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  console.error("ERROR: DATABASE_URL is not set in environment");
+const hasDiscretePgConfig =
+  process.env.PGHOST &&
+  process.env.PGDATABASE &&
+  process.env.PGUSER &&
+  process.env.PGPASSWORD &&
+  process.env.PGPORT;
+
+if (!connectionString && !hasDiscretePgConfig) {
+  console.error("ERROR: Database config missing. Set DATABASE_URL or PGHOST/PGDATABASE/PGUSER/PGPASSWORD/PGPORT");
 }
 
-const pool = new Pool({
-  connectionString,
-  // If your provider requires SSL and self-signed certs enable:
-  // ssl: { rejectUnauthorized: false },
-});
+const poolConfig = connectionString
+  ? {
+      connectionString,
+      // If your provider requires SSL and self-signed certs enable:
+      // ssl: { rejectUnauthorized: false },
+    }
+  : {
+      host: process.env.PGHOST,
+      database: process.env.PGDATABASE,
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      port: Number(process.env.PGPORT),
+    };
+
+const pool = new Pool(poolConfig);
 
 pool.on("error", (err) => {
   console.error("Unexpected idle client error", err);

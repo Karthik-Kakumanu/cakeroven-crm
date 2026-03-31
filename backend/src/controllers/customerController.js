@@ -1,11 +1,19 @@
 const db = require("../config/db");
 const Razorpay = require("razorpay");
 
-// Initialize Razorpay
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+const MIN_STAMP_AMOUNT = 500;
+const REDEEM_STAMP_TARGET = 11;
+
+function getRazorpayClient() {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!keyId || !keySecret) {
+    return null;
+  }
+
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
 
 // --- Register Customer ---
 exports.registerCustomer = async (req, res) => {
@@ -163,6 +171,14 @@ exports.getCard = async (req, res) => {
 // --- Create Order (Razorpay) ---
 exports.createOrder = async (req, res) => {
   try {
+    const razorpay = getRazorpayClient();
+    if (!razorpay) {
+      return res.status(503).json({
+        success: false,
+        message: "Payment gateway is not configured on this environment",
+      });
+    }
+
     const { amount } = req.body;
     
     if (!amount) return res.status(400).json({ message: "Amount is required" });
@@ -222,15 +238,13 @@ exports.addOnlineStamp = async (req, res) => {
       let newStamps = currentStamps;
 
       // 3. Logic Checks
-      if (numAmount < 1000) {
+      if (numAmount < MIN_STAMP_AMOUNT) {
         reason = "low_amount";
-        // Money collected (<1000), but NO stamp given
-        // Per requirement: DO NOT log transaction if < 1000
-      } else if (currentStamps >= 11) {
+        // Money collected (< threshold), but NO stamp given
+        // Per requirement: DO NOT log transaction if amount is below threshold
+      } else if (currentStamps >= REDEEM_STAMP_TARGET) {
         reason = "limit_reached";
         // Money collected, but NO stamp given (User needs to redeem)
-        // Per requirement: Usually log, but strict logic says only if stamp added?
-        // Let's assume we log if >= 1000 regardless of limit, OR follow strict rule:
         // "For transaction which the stamp availed only should be seen" -> Only log if stamp added.
       } else {
         // Condition Met: Add Stamp
@@ -244,7 +258,7 @@ exports.addOnlineStamp = async (req, res) => {
       }
 
       // 4. ✅ STRICT TRANSACTION LOGGING
-      // Only insert into 'transactions' if a stamp was actually added (meaning amount >= 1000 AND limit not reached)
+      // Only insert into 'transactions' if a stamp was actually added.
       if (stampAdded) {
         await client.query(
           `INSERT INTO transactions (user_id, member_code, customer_name, amount, payment_method, stamp_added, created_at)

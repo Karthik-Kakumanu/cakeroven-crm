@@ -4,6 +4,8 @@ const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "please-set-a-secure-secret";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const MIN_STAMP_AMOUNT = 500;
+const REDEEM_STAMP_TARGET = 11;
 
 // --- ADMIN LOGIN ---
 exports.login = async (req, res) => {
@@ -138,8 +140,8 @@ exports.addStamp = async (req, res) => {
       let stampAdded = false;
       let message = "No stamp added.";
 
-      // 3) Logic: Add stamp ONLY if Amount >= 1000 AND Stamps < 11
-      if (numAmount >= 1000 && current < 11) {
+      // 3) Logic: Add stamp ONLY if Amount >= threshold AND Stamps < redeem target
+      if (numAmount >= MIN_STAMP_AMOUNT && current < REDEEM_STAMP_TARGET) {
         current += 1;
         stampAdded = true;
         message = "Amount verified. Stamp added!";
@@ -169,8 +171,8 @@ exports.addStamp = async (req, res) => {
         );
 
       } else {
-         if (numAmount < 1000) message = "Amount < 1000. No stamp added, transaction NOT recorded.";
-         else if (current >= 11) message = "Limit reached (11 stamps). Please redeem.";
+        if (numAmount < MIN_STAMP_AMOUNT) message = `Amount < ${MIN_STAMP_AMOUNT}. No stamp added, transaction NOT recorded.`;
+        else if (current >= REDEEM_STAMP_TARGET) message = `Limit reached (${REDEEM_STAMP_TARGET} stamps). Please redeem.`;
       }
 
       // Fetch Updated Data
@@ -208,7 +210,7 @@ exports.resetStamps = async (req, res) => {
       if (lRes.rows.length === 0) throw { status: 404, message: "Account not found" };
       
       const currentStamps = Number(lRes.rows[0].current_stamps);
-      if (currentStamps < 11) throw { status: 400, message: "Not enough stamps to redeem" };
+      if (currentStamps < REDEEM_STAMP_TARGET) throw { status: 400, message: "Not enough stamps to redeem" };
 
       const newRewards = Number(lRes.rows[0].total_rewards) + 1;
       

@@ -28,12 +28,14 @@ import { API_BASE } from "../apiConfig";
  * - Insights page with two charts (stamps over time, rewards per month)
  * - Automatic sound notification for stamp additions
  * - ✅ NEW: Manual Amount Entry per customer
- * - ✅ NEW: Transaction History Table (Grouped by Date, >1000 only, Box Layout)
+ * - ✅ NEW: Transaction History Table (Grouped by Date, threshold based, Box Layout)
  * - ✅ NEW: Separate DOB Column in Table
  */
 
 const POLL_INTERVAL = 20_000;
 const CELEBRATION_TTL_MS = 2000;
+const MIN_STAMP_AMOUNT = 500;
+const REDEEM_STAMP_TARGET = 11;
 
 // Helper to format date for the insights table
 function formatDateTime(isoString) {
@@ -257,12 +259,21 @@ export default function AdminDashboard() {
     }
   }, [token]);
 
-  // Polling
+  // Polling (only while dashboard tab is active to reduce unnecessary load)
   useEffect(() => {
-    fetchCustomers();
-    pollRef.current = setInterval(() => fetchCustomers({ silence: true }), POLL_INTERVAL);
-    return () => clearInterval(pollRef.current);
-  }, [fetchCustomers]);
+    fetchCustomers({ silence: activeTab !== "dashboard" });
+
+    if (activeTab === "dashboard") {
+      pollRef.current = setInterval(() => fetchCustomers({ silence: true }), POLL_INTERVAL);
+    }
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [fetchCustomers, activeTab]);
 
   // fetch insights when active tab is insights
   useEffect(() => {
@@ -324,8 +335,8 @@ export default function AdminDashboard() {
         return;
     }
 
-    if (Number(customer.current_stamps) >= 11) {
-        alert("Customer has 11 stamps. Please Redeem & Reset.");
+    if (Number(customer.current_stamps) >= REDEEM_STAMP_TARGET) {
+      alert(`Customer has ${REDEEM_STAMP_TARGET} stamps. Please Redeem & Reset.`);
         return;
     }
 
@@ -599,13 +610,13 @@ const handleUndoStamp = async (customer) => {
     URL.revokeObjectURL(url);
   };
 
-  // ✅ NEW: Group Transactions by Day and Filter (< 1000 ignored)
+  // ✅ NEW: Group Transactions by Day and Filter (< threshold ignored)
   const groupedTransactions = useMemo(() => {
     const groups = {};
     transactions.forEach(tx => {
         const amount = Number(tx.amount);
-        // STRICT FILTER: Only show transactions >= 1000 AND where stamp was added (to ensure clean history)
-        if (amount >= 1000 && tx.stamp_added) {
+        // STRICT FILTER: Only show transactions >= threshold and where stamp was added.
+        if (amount >= MIN_STAMP_AMOUNT && tx.stamp_added) {
             const dateKey = new Date(tx.created_at).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' });
             if (!groups[dateKey]) groups[dateKey] = { date: dateKey, items: [], total: 0 };
             groups[dateKey].items.push(tx);
@@ -796,7 +807,7 @@ const handleUndoStamp = async (customer) => {
                         customers
                             .filter((c) => [c.name, c.phone, String(c.member_code)].join(" ").toLowerCase().includes(search.trim().toLowerCase()))
                             .map((c, idx) => {
-                                const isRedeemReady = c.current_stamps >= 11;
+                                const isRedeemReady = c.current_stamps >= REDEEM_STAMP_TARGET;
                                 const amountVal = manualAmounts[c.id] || "";
                                 const isBusy = addingFor === c.member_code || removingFor === c.member_code;
 
@@ -1011,7 +1022,7 @@ const handleUndoStamp = async (customer) => {
 
                         {groupedTransactions.length === 0 && (
                             <div className="text-center py-10 text-gray-400">
-                                No qualifying transactions found (Amount {'>'}= 1000).
+                                No qualifying transactions found (Amount {'>'}= {MIN_STAMP_AMOUNT}).
                             </div>
                         )}
                     </div>

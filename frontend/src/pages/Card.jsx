@@ -211,14 +211,6 @@ export default function Card() {
     } catch (e) { /* Ignore */ }
 
     if (!keyId) {
-        try {
-            if (process.env.REACT_APP_RAZORPAY_KEY_ID) {
-                keyId = process.env.REACT_APP_RAZORPAY_KEY_ID;
-            }
-        } catch (e) { /* Ignore */ }
-    }
-
-    if (!keyId) {
       setToast({ message: "System Error: Payment Key Missing.", type: "error" });
       return;
     }
@@ -276,7 +268,7 @@ export default function Card() {
                    setToast({ message: "Payment Successful! 1 Stamp Added.", type: "success" });
                 } else {
                    if (data.reason === "low_amount") {
-                     setToast({ message: "Payment success, but <1000. No stamp.", type: "info" });
+                     setToast({ message: "Payment success, but <500. No stamp.", type: "info" });
                    } else if (data.reason === "limit_reached") {
                      setToast({ message: "Payment success! 12th stamp is manual.", type: "info" });
                    } else {
@@ -327,7 +319,7 @@ export default function Card() {
 
   const memberCode = card?.memberCode || card?.member_code || "—";
   const maskedPhone = card?.phone && card.phone.length >= 3 ? "••••••" + card.phone.slice(-3) : "••••••••••";
-  const inlineLogoSrc = `${process.env.PUBLIC_URL || ""}/cakeroven-logo.png`;
+  const inlineLogoSrc = `${import.meta.env.BASE_URL || "/"}cakeroven-logo.png`;
 
   const page = {
     hidden: { opacity: 0, y: 8 },
@@ -459,7 +451,7 @@ export default function Card() {
                 <div className="absolute inset-0 bg-[#fbbf24] blur opacity-20 rounded-lg group-hover:opacity-30 transition"></div>
                 <div className="relative px-2.5 py-1.5 border border-[#fbbf24]/40 bg-[#fbbf24]/10 shadow-[0_0_15px_rgba(251,191,36,0.15)] backdrop-blur-sm rounded-xl">
                   <p className="text-[9px] uppercase text-[#fbbf24]/80 font-bold mb-0.5 text-right">Unlocks after 11</p>
-                  <p className="text-sm font-extrabold text-[#fbbf24]">₹2000 Food FREE ✨</p>
+                  <p className="text-sm font-extrabold text-[#fbbf24]">₹1000 Food FREE ✨</p>
                 </div>
               </div>
             </motion.div>
@@ -471,7 +463,7 @@ export default function Card() {
               <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 font-mono text-sm">{stamps}/12</span>
               <p className="text-xs text-amber-100/80">{isRewardReady ? "Reward unlocked! Claim below." : "stamps to your next treat."}</p>
             </div>
-            <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">PAY ₹1000+ = 1 STAMP</div>
+            <div className="text-xs px-2 py-1 rounded-full bg-amber-100/8 border border-amber-100/20 whitespace-nowrap">PAY ₹500+ = 1 STAMP</div>
           </div>
 
           <div className="rounded-2xl bg-[#3d0f0b]/60 border border-amber-100/6 p-3 mb-3 relative">
@@ -535,10 +527,10 @@ export default function Card() {
           {/* ✅ RESTORED ALL TEXT ✅ */}
           <div className="text-xs text-amber-100/75 space-y-2">
             <p>
-              Cash: Show at counter, Online: Pay using the box above. <span className="font-semibold">₹1000 or more</span> earns <span className="font-semibold">1 stamp</span>.
+              Cash: Show at counter, Online: Pay using the box above. <span className="font-semibold">₹500 or more</span> earns <span className="font-semibold">1 stamp</span>.
             </p>
             <p>
-              On your 12th visit, enjoy up to ₹2000 worth of food FREE. If the bill exceeds ₹2000, only the balance amount is payable. Unused free value does not carry forward.
+              On your 12th visit, enjoy up to ₹1000 worth of food FREE. If the bill exceeds ₹1000, only the balance amount is payable. Unused free value does not carry forward.
             </p>
             <p>
               Only 1 bill = 1 stamp. No bill splitting allowed.
