@@ -1,10 +1,19 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { API_BASE } from "../apiConfig";
 
 export default function ExistingUser() {
   const navigate = useNavigate();
+  const logoRain = useMemo(
+    () =>
+      Array.from({ length: 5 }, (_, i) => ({
+        id: i,
+        x: `${12 + i * 18}vw`,
+        delay: i * 0.7,
+      })),
+    []
+  );
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -47,63 +56,41 @@ export default function ExistingUser() {
 
   return (
     <div className="relative min-h-screen bg-[#f5e6c8] overflow-hidden flex items-center justify-center px-4">
-
-      {/* background */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_#ffffff_0,_#f5e6c8_45%,_#f5e6c8_100%)]" />
 
-      {/* LOUD FALLING LOGOS */}
       <div className="pointer-events-none absolute inset-0">
-        {[...Array(8)].map((_, i) => (
+        {logoRain.map((item) => (
           <motion.img
-            key={i}
+            key={item.id}
             src="/cakeroven-logo.png"
-            className="absolute w-14 h-14"
-            initial={{
-              y: -120,
-              x: `${Math.random() * 100}vw`,
-              opacity: 0,
-              rotate: -10,
-            }}
-            animate={{
-              y: "110vh",
-              opacity: [0, 0.95, 0.8, 0],
-              rotate: [-10, 5, -5, 10],
-            }}
-            transition={{
-              duration: 7,
-              delay: i * 0.7,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-            style={{ filter: "contrast(1.3) brightness(0.9)" }}
+            alt=""
+            className="absolute w-12 h-12"
+            initial={{ y: -90, x: item.x, opacity: 0, rotate: -10 }}
+            animate={{ y: "110vh", opacity: [0, 0.75, 0], rotate: [-10, 5, 10] }}
+            transition={{ duration: 8, delay: item.delay, repeat: Infinity, ease: "linear" }}
+            style={{ filter: "contrast(1.15) brightness(0.95)" }}
           />
         ))}
       </div>
 
-      {/* CARD */}
       <motion.div
-        initial={{ opacity: 0, y: 40, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.6 }}
-        className="relative z-10 w-full max-w-md bg-[#501914] text-[#f5e6c8] rounded-[32px] p-6 sm:p-8 shadow-[0_30px_70px_rgba(0,0,0,0.6)]"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.22 }}
+        className="relative z-10 w-full max-w-md bg-[#501914] text-[#f5e6c8] rounded-[28px] p-6 sm:p-8 shadow-[0_20px_45px_rgba(0,0,0,0.45)]"
       >
-        {/* header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-full bg-[#f5e6c8] flex items-center justify-center shadow-lg">
-            <img src="/cakeroven-logo.png" className="w-9 h-9 rounded-full" />
+            <img src="/cakeroven-logo.png" alt="CakeRoven" className="w-9 h-9 rounded-full" loading="eager" decoding="async" />
           </div>
           <div>
             <h1 className="font-bold text-lg">CakeRoven Loyalty</h1>
-            <p className="text-xs text-[#f5e6c8]/80">
-              Access your digital stamp card
-            </p>
+            <p className="text-xs text-[#f5e6c8]/80">Access your digital stamp card</p>
           </div>
         </div>
 
         <h2 className="text-xl font-semibold mb-1">Existing User Login</h2>
-        <p className="text-xs text-[#f5e6c8]/80 mb-5">
-          Enter your registered mobile number
-        </p>
+        <p className="text-xs text-[#f5e6c8]/80 mb-5">Enter your registered mobile number</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -120,7 +107,7 @@ export default function ExistingUser() {
           </div>
 
           <motion.button
-            whileTap={{ scale: 0.97 }}
+            whileTap={{ scale: 0.98 }}
             disabled={loading}
             className="w-full h-11 rounded-2xl bg-[#f5e6c8] text-[#501914] font-semibold shadow-lg disabled:opacity-70"
           >

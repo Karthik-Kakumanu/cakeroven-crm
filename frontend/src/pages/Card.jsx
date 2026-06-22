@@ -1,5 +1,5 @@
 // src/pages/Card.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE } from "../apiConfig";
@@ -55,10 +55,23 @@ function getHolidayInfoForIst(dateIst) {
 }
 
 // --- Razorpay Loader ---
+const RAZORPAY_SCRIPT_ID = "razorpay-checkout-js";
 const loadRazorpayScript = () => {
+  if (window.Razorpay) return Promise.resolve(true);
+
+  const existingScript = document.getElementById(RAZORPAY_SCRIPT_ID);
+  if (existingScript) {
+    return new Promise((resolve) => {
+      existingScript.addEventListener("load", () => resolve(true), { once: true });
+      existingScript.addEventListener("error", () => resolve(false), { once: true });
+    });
+  }
+
   return new Promise((resolve) => {
     const script = document.createElement("script");
+    script.id = RAZORPAY_SCRIPT_ID;
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
     script.onload = () => resolve(true);
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
@@ -85,6 +98,17 @@ export default function Card() {
   const [toast, setToast] = useState(null); 
 
   const isMountedRef = useRef(true);
+  const logoRain = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, i) => ({
+        id: i,
+        left: `${8 + i * 16}%`,
+        x: `${10 + i * 14}vw`,
+        delay: i * 0.85,
+        duration: 6 + (i % 3),
+      })),
+    []
+  );
 
   // Auto-dismiss Toast
   useEffect(() => {
@@ -275,7 +299,7 @@ export default function Card() {
                      setToast({ message: "Payment successful.", type: "success" });
                    }
                 }
-                setTimeout(() => window.location.reload(), 2000);
+
               } else {
                  setToast({ message: data.message || "Payment failed.", type: "error" });
               }
@@ -378,16 +402,16 @@ export default function Card() {
       
       {/* Background Rain */}
       <div className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden">
-        {Array.from({ length: 15 }).map((_, i) => (
+        {logoRain.map((item) => (
           <motion.img
-            key={i}
+            key={item.id}
             src="/cakeroven-logo.png"
             alt=""
             className="absolute w-12 h-12 md:w-16 md:h-16 object-contain"
-            initial={{ y: -150, x: `${Math.random() * 100}vw`, opacity: 0 }}
+            initial={{ y: -150, x: item.x, opacity: 0 }}
             animate={{ y: "55vh", opacity: [0, 1, 1, 0] }}
-            transition={{ duration: 5 + Math.random() * 5, delay: i * 0.8, repeat: Infinity, ease: "linear" }}
-            style={{ left: `${Math.random() * 100}%`, filter: "brightness(0.9) opacity(0.5)" }}
+            transition={{ duration: item.duration, delay: item.delay, repeat: Infinity, ease: "linear" }}
+            style={{ left: item.left, filter: "brightness(0.9) opacity(0.35)" }}
           />
         ))}
       </div>
@@ -649,3 +673,4 @@ export default function Card() {
     </main>
   );
 }
+

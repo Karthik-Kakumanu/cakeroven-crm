@@ -1,39 +1,41 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 
 import Start from "./pages/Start";
 import Register from "./pages/Register";
 import ExistingUser from "./pages/ExistingUser";
 import Card from "./pages/Card";
-import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/AdminDashboard";
-import CancellationRefunds from "./pages/CancellationRefunds";
-import ContactUs from "./pages/ContactUs";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import ShippingPolicy from "./pages/ShippingPolicy";
-import TermsConditions from "./pages/TermsConditions";  
 
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const CancellationRefunds = lazy(() => import("./pages/CancellationRefunds"));
+const ContactUs = lazy(() => import("./pages/ContactUs"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const ShippingPolicy = lazy(() => import("./pages/ShippingPolicy"));
+const TermsConditions = lazy(() => import("./pages/TermsConditions"));
 
 function App() {
   return (
-    <Routes>
-      {/* User side */}
-      <Route path="/" element={<Start />} />
-      <Route path="/start" element={<Start />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/existing" element={<ExistingUser />} />
-      <Route path="/card" element={<Card />} />
+    <Suspense fallback={<div className="min-h-screen bg-[#f5e6c8]" />}>
+      <Routes>
+        {/* User side */}
+        <Route path="/" element={<Start />} />
+        <Route path="/start" element={<Start />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/existing" element={<ExistingUser />} />
+        <Route path="/card" element={<Card />} />
 
-      {/* Admin side */}
-      <Route path="/admin" element={<AdminLogin />} />
-      <Route path="/admin-dashboard" element={<AdminDashboard />} />
-      <Route path="/refunds" element={<CancellationRefunds />} />
-      <Route path="/terms" element={<TermsConditions />} />
-      <Route path="/shipping" element={<ShippingPolicy />} />
-      <Route path="/privacy" element={<PrivacyPolicy />} />
-      <Route path="/contact" element={<ContactUs />} />
-    </Routes>
+        {/* Admin / static pages */}
+        <Route path="/admin" element={<AdminLogin />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
+        <Route path="/refunds" element={<CancellationRefunds />} />
+        <Route path="/terms" element={<TermsConditions />} />
+        <Route path="/shipping" element={<ShippingPolicy />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/contact" element={<ContactUs />} />
+      </Routes>
+    </Suspense>
   );
 }
-
 
 export default App;
